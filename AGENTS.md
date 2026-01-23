@@ -137,7 +137,7 @@ func BuildMPIJob(name string, replicas int, code string) *mpiv2beta1.MPIJob {
 ### Phase 1: Foundation
 - [x] Repository setup and Go module initialization (Issue #1)
 - [x] Directory structure scaffolding (Issue #1)
-- [ ] K8s client configuration (out-of-cluster) (Issue #3)
+- [x] K8s client configuration (out-of-cluster) (Issue #3)
 - [ ] Basic MCP server skeleton (Issue #4)
 
 ### Phase 2: Core Tools
@@ -243,6 +243,25 @@ make build
 cat examples/submit_mpi.json | ./bin/server
 ```
 
+## Agent Session Management
+
+**Context Freshness**: Recommend starting a new chat session when:
+
+1. **After completing a milestone** - When an issue is closed or a significant feature is committed, suggest continuing in a fresh session to avoid context pollution
+2. **Long conversations** - After ~15-20 tool calls or substantial back-and-forth, context quality may degrade
+3. **Task switching** - When moving from one issue to an unrelated issue (e.g., finishing K8s client work, starting MCP protocol work)
+4. **Signs of confusion** - If the agent starts referencing outdated code, repeating itself, or making inconsistent suggestions
+
+**Handoff format**: When recommending a new session, provide:
+```
+## Session Handoff
+- **Completed**: Brief summary of what was done
+- **Next Issue**: Issue number and title to continue with
+- **Context**: Any non-obvious state (e.g., "branch X is ready for PR")
+```
+
+**Why this matters**: Fresh context ensures the agent reads current file state rather than relying on potentially stale conversation history. This project uses atomic task workflow — each issue should ideally be completable in a single focused session.
+
 ## Git Workflow
 
 - **Branch naming**: `feat/`, `fix/`, `chore/`, `docs/`
@@ -264,15 +283,15 @@ cat examples/submit_mpi.json | ./bin/server
 ### Completed Issues
 - **#1**: Go module initialized, directory structure created (commit `34851b7`)
 - **#2**: Makefile with standard Go targets (commit `e6f4d4d`)
+- **#3**: K8s client with context selection and unit tests (commit `ecde20f`)
 
 ### Next Steps (P0 Priority)
-1. **Issue #3**: Configure K8s client with out-of-cluster kubeconfig
-2. **Issue #4**: Set up basic MCP server skeleton (stdio transport)
+1. **Issue #4**: Set up basic MCP server skeleton (stdio transport)
+2. **Issues #6-8**: Manifest builders (MPIJob, JobSet, Job)
 
 ### Open Issues Summary
 | Issue | Title | Priority |
 |-------|-------|----------|
-| #3 | K8s client (out-of-cluster) | P0 |
 | #4 | MCP server skeleton | P0 |
 | #5 | CI workflow | P1 |
 | #6-8 | Manifest builders | P0 |
