@@ -153,6 +153,11 @@ func BuildMPIJob(name string, replicas int, code string) *mpiv2beta1.MPIJob {
 - [ ] Example manifests
 - [ ] CI/CD workflows
 
+### Future Enhancements
+- [ ] E2E testing with KIND/minikube (Issue #22)
+- [ ] Configurable resource requests (CPU/memory/GPU) (Issue #23)
+- [ ] GPU workload support (CUDA, NCCL) (Issue #24)
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -186,6 +191,30 @@ require (
 2. **RBAC**: Document minimum required permissions
 3. **Input validation**: Validate all user-provided code before submission
 4. **Resource limits**: Enforce resource quotas in generated manifests
+
+## GPU Support (Future)
+
+### Resource Requests
+Jobs should support configurable resources including GPU:
+```go
+type ResourceSpec struct {
+    CPU     string `json:"cpu,omitempty"`      // "100m", "2"
+    Memory  string `json:"memory,omitempty"`   // "256Mi", "4Gi"
+    GPU     int    `json:"gpu,omitempty"`      // Number of GPUs
+    GPUType string `json:"gpu_type,omitempty"` // "nvidia.com/gpu"
+}
+```
+
+### RuntimeClass
+GPU workloads require RuntimeClass configuration:
+- `nvidia` RuntimeClass for NVIDIA GPU Operator
+- Tolerations for GPU node taints
+- Node selectors for GPU nodes
+
+### Related Issues
+- #22: E2E testing framework with KIND/minikube
+- #23: Configurable resource requests
+- #24: GPU workload support (CUDA, NCCL)
 
 ## Common Agent Tasks
 
