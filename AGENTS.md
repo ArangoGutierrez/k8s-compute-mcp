@@ -261,12 +261,26 @@ cat examples/submit_mpi.json | ./bin/server
 
 ## Current Status
 
-**Issue #1 Complete**: Go module initialized, directory structure created, all placeholder files with proper package declarations.
+### Completed Issues
+- **#1**: Go module initialized, directory structure created (commit `34851b7`)
+- **#2**: Makefile with standard Go targets (commit `e6f4d4d`)
 
-**Next Steps**:
-1. Issue #3: Implement full K8s client with context support
-2. Issue #4: Wire up MCP server with mcp-go library
-3. Issue #2: Create Makefile with standard targets
+### Next Steps (P0 Priority)
+1. **Issue #3**: Configure K8s client with out-of-cluster kubeconfig
+2. **Issue #4**: Set up basic MCP server skeleton (stdio transport)
+
+### Open Issues Summary
+| Issue | Title | Priority |
+|-------|-------|----------|
+| #3 | K8s client (out-of-cluster) | P0 |
+| #4 | MCP server skeleton | P0 |
+| #5 | CI workflow | P1 |
+| #6-8 | Manifest builders | P0 |
+| #9-14 | MCP tool implementations | P0 |
+| #15-21 | Deployment/Docs | P1-P2 |
+| #22 | E2E testing with KIND | P1 |
+| #23 | Configurable resources | P1 |
+| #24 | GPU workload support | P1 |
 
 ---
 
