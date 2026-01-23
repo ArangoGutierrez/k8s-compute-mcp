@@ -1,0 +1,63 @@
+version: 2
+updates:
+  # =============================================================================
+  # Go modules dependency updates
+  # =============================================================================
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Madrid"
+    open-pull-requests-limit: 5
+    assignees:
+      - "ArangoGutierrez"
+    reviewers:
+      - "ArangoGutierrez"
+    labels:
+      - "dependencies"
+      - "kind/tech-debt"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    # Group updates to reduce PR noise
+    groups:
+      # Group all minor and patch updates together
+      go-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Ignore major version bumps (breaking changes require manual review)
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # =============================================================================
+  # GitHub Actions workflow dependency updates
+  # =============================================================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Madrid"
+    open-pull-requests-limit: 3
+    assignees:
+      - "ArangoGutierrez"
+    reviewers:
+      - "ArangoGutierrez"
+    labels:
+      - "dependencies"
+      - "ops/ci-cd"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    # Group all action updates together
+    groups:
+      github-actions:
+        patterns:
+          - "*"

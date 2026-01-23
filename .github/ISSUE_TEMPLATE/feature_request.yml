@@ -1,0 +1,121 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for k8s-compute-mcp
+title: "[Feature]: "
+labels: ["kind/feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Feature Request
+        Thank you for suggesting a new feature! Please provide details to help us understand and evaluate the proposal.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: A clear and concise description of the feature.
+      placeholder: Add support for Ray jobs submission...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What is the user pain point?
+      placeholder: |
+        As a data scientist running distributed computations, I need to 
+        submit Ray jobs to leverage its actor model for complex workflows...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work?
+      placeholder: |
+        Add a new MCP tool `submit_ray_job` that:
+        - Accepts Python script and cluster configuration
+        - Generates RayJob CRD manifest
+        - Submits to cluster with Kueue integration
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Are there other ways to solve this problem?
+      placeholder: Could use kubectl directly, but loses LLM integration...
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Component Area
+      description: Which part of the system would this affect?
+      options:
+        - MCP Tool (New)
+        - Kubernetes Integration
+        - Manifest Generation
+        - CLI/Configuration
+        - Helm Chart
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Suggested Milestone
+      description: Which milestone should this target?
+      options:
+        - Phase 1 - Foundation
+        - Phase 2 - Core Tools
+        - Phase 3 - Deployment
+        - Future (Post-v1.0)
+        - Unsure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature?
+      options:
+        - P0 - Blocker (critical for release)
+        - P1 - High (should have)
+        - P2 - Medium (nice to have)
+        - P3 - Low (future consideration)
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical
+    attributes:
+      label: Technical Considerations
+      description: Any implementation notes, API changes, or dependencies?
+      placeholder: |
+        - Requires Ray Operator installed in cluster
+        - May need additional RBAC permissions
+        - Should support GPU scheduling
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Links, references, screenshots, or other relevant information.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I searched existing issues/PRs for similar requests
+          required: true
+        - label: This feature aligns with the project's compute-offloading design
+          required: true
+        - label: I am willing to contribute to implementation
+          required: false

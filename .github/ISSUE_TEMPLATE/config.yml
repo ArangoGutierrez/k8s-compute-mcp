@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/ArangoGutierrez/k8s-compute-mcp/discussions
+    about: Ask questions, share ideas, or discuss the project with the community
+  - name: Documentation
+    url: https://github.com/ArangoGutierrez/k8s-compute-mcp/blob/main/README.md
+    about: Read the documentation and getting started guide
+  - name: Security Advisory (Private)
+    url: https://github.com/ArangoGutierrez/k8s-compute-mcp/security/advisories/new
+    about: Report critical security vulnerabilities privately

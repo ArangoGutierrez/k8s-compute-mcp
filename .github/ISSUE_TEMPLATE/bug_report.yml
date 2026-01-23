@@ -1,0 +1,115 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in k8s-compute-mcp
+title: "[Bug]: "
+labels: ["kind/bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+        Thank you for taking the time to report a bug. Please provide as much detail as possible to help us reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Submit MPI job with: submit_mpi_job(...)
+        2. Check status with: check_status(...)
+        3. Observe error: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+      placeholder: Job should be submitted and return a valid job ID...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened. Include error messages, logs, or stack traces.
+      placeholder: |
+        Error: failed to submit MPI job: ...
+        Logs: {"level":"error","msg":"..."}
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Component Area
+      description: Which part of the system is affected?
+      options:
+        - MCP Protocol/Transport
+        - Kubernetes Client
+        - MPIJob Submission
+        - JobSet/Monte Carlo
+        - Reducer Job
+        - Status Checking
+        - Artifact Reading
+        - Build/Container
+        - Helm Chart
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Information about your environment.
+      placeholder: |
+        - Server Version: v0.1.0
+        - Kubernetes Version: 1.28
+        - MPI Operator Version: v2beta1
+        - JobSet Controller Version: v0.5.0
+        - Kueue Version: v0.6.0
+        - Go Version: 1.25
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste relevant logs (from stderr). Use ``` code blocks.
+      placeholder: |
+        ```json
+        {"level":"error","component":"k8s","msg":"failed to apply manifest"}
+        ```
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem (screenshots, related issues, etc.)
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I searched existing issues to avoid duplicates
+          required: true
+        - label: I included relevant logs and error messages
+          required: true
+        - label: This bug is reproducible on the latest version
+          required: false

@@ -1,0 +1,85 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+coverage.out
+coverage.html
+*.coverprofile
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Build directories
+/bin/
+dist/
+build/
+out/
+
+# Vendor directory (if used)
+vendor/
+
+# IDE and editor files
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project scratchpad (local development notes)
+SCRATCHPAD.md
+AUDIT_REPORT.md
+
+# Environment files
+.env
+.env.local
+*.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Logs
+*.log
+
+# CI/CD artifacts
+.ci/
+.build/
+
+# Container build artifacts
+*.tar
+*.tar.gz
+
+# Go module cache
+go.sum.backup
+
+# Development tools
+.cache/
+.tools/
+
+# OS-specific files
+Thumbs.db
+desktop.ini
+
+# Project-specific
+server
+k8s-compute-mcp
+
+# Prompt working files (keep templates only)
+docs/prompts/*.md
+!docs/prompts/README.md
+!docs/prompts/TEMPLATE.md
+
+# Report working files (keep README only)
+docs/reports/*.md
+!docs/reports/README.md
