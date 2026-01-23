@@ -5,6 +5,7 @@
 //
 // The client is configured for out-of-cluster usage, loading credentials from
 // the user's kubeconfig file (~/.kube/config or KUBECONFIG environment variable).
+// A specific context can be selected via the KUBE_CONTEXT environment variable.
 package k8s
 
 import (
@@ -32,15 +33,47 @@ type Client struct {
 
 	// namespace is the default namespace for operations.
 	namespace string
+
+	// context is the kubeconfig context used for this client.
+	context string
+}
+
+// ClientOption configures a Client.
+type ClientOption func(*clientOptions)
+
+type clientOptions struct {
+	kubeconfig string
+	context    string
+}
+
+// WithKubeconfig sets the path to the kubeconfig file.
+func WithKubeconfig(path string) ClientOption {
+	return func(o *clientOptions) {
+		o.kubeconfig = path
+	}
+}
+
+// WithContext sets the kubeconfig context to use.
+func WithContext(ctx string) ClientOption {
+	return func(o *clientOptions) {
+		o.context = ctx
+	}
 }
 
 // NewClient creates a new Kubernetes client using out-of-cluster configuration.
 //
-// If kubeconfig is empty, it attempts to load from:
-// 1. KUBECONFIG environment variable
-// 2. ~/.kube/config
-func NewClient(kubeconfig string) (*Client, error) {
+// Configuration is resolved in the following order:
+//  1. Options passed via ClientOption (WithKubeconfig, WithContext)
+//  2. Environment variables (KUBECONFIG, KUBE_CONTEXT)
+//  3. Default paths (~/.kube/config) and current context
+func NewClient(opts ...ClientOption) (*Client, error) {
+	options := &clientOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	// Determine kubeconfig path
+	kubeconfig := options.kubeconfig
 	if kubeconfig == "" {
 		kubeconfig = os.Getenv("KUBECONFIG")
 	}
@@ -52,8 +85,28 @@ func NewClient(kubeconfig string) (*Client, error) {
 		kubeconfig = filepath.Join(home, ".kube", "config")
 	}
 
-	// Build config from kubeconfig file
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	// Determine context
+	kubeContext := options.context
+	if kubeContext == "" {
+		kubeContext = os.Getenv("KUBE_CONTEXT")
+	}
+
+	// Set up loading rules and overrides
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.ExplicitPath = kubeconfig
+
+	configOverrides := &clientcmd.ConfigOverrides{}
+	if kubeContext != "" {
+		configOverrides.CurrentContext = kubeContext
+	}
+
+	// Build config from kubeconfig file with context override
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules,
+		configOverrides,
+	)
+
+	config, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build kubeconfig from %s: %w", kubeconfig, err)
 	}
@@ -70,14 +123,16 @@ func NewClient(kubeconfig string) (*Client, error) {
 		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
-	// Get default namespace from kubeconfig context
+	// Get namespace from kubeconfig context (or default)
 	namespace := "default"
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	loadingRules.ExplicitPath = kubeconfig
-	configOverrides := &clientcmd.ConfigOverrides{}
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-	if ns, _, err := kubeConfig.Namespace(); err == nil && ns != "" {
+	if ns, _, err := clientConfig.Namespace(); err == nil && ns != "" {
 		namespace = ns
+	}
+
+	// Resolve actual context name used
+	rawConfig, err := clientConfig.RawConfig()
+	if err == nil && kubeContext == "" {
+		kubeContext = rawConfig.CurrentContext
 	}
 
 	return &Client{
@@ -85,12 +140,18 @@ func NewClient(kubeconfig string) (*Client, error) {
 		dynamicClient: dynamicClient,
 		config:        config,
 		namespace:     namespace,
+		context:       kubeContext,
 	}, nil
 }
 
 // Namespace returns the default namespace for operations.
 func (c *Client) Namespace() string {
 	return c.namespace
+}
+
+// Context returns the kubeconfig context name used by this client.
+func (c *Client) Context() string {
+	return c.context
 }
 
 // Clientset returns the typed Kubernetes client.

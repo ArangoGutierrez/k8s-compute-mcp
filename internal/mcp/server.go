@@ -26,9 +26,13 @@ type Server struct {
 }
 
 // NewServer creates a new MCP server instance.
+//
+// The K8s client is configured via environment variables:
+//   - KUBECONFIG: Path to kubeconfig file (default: ~/.kube/config)
+//   - KUBE_CONTEXT: Kubernetes context to use (default: current context)
 func NewServer() (*Server, error) {
-	// Initialize K8s client
-	client, err := k8s.NewClient("")
+	// Initialize K8s client using environment configuration
+	client, err := k8s.NewClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create k8s client: %w", err)
 	}
