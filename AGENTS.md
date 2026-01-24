@@ -138,14 +138,16 @@ func BuildMPIJob(name string, replicas int, code string) *mpiv2beta1.MPIJob {
 - [x] Repository setup and Go module initialization (Issue #1)
 - [x] Directory structure scaffolding (Issue #1)
 - [x] K8s client configuration (out-of-cluster) (Issue #3)
-- [ ] Basic MCP server skeleton (Issue #4)
+- [x] Basic MCP server skeleton (Issue #4)
 
 ### Phase 2: Core Tools
-- [ ] `submit_mpi_job` implementation
-- [ ] `submit_monte_carlo_batch` implementation
-- [ ] `submit_reducer` implementation
-- [ ] `check_status` implementation
-- [ ] `read_artifact_head` implementation
+- [x] `submit_mpi_job` handler implementation
+- [x] `submit_monte_carlo_batch` handler implementation
+- [x] `submit_reducer` handler implementation
+- [x] `check_status` handler implementation
+- [ ] `read_artifact_head` implementation (validation only, needs ephemeral pod reader)
+- [ ] MPIJob manifest builder (full spec - currently placeholder)
+- [ ] JobSet manifest builder (full spec - currently placeholder)
 
 ### Phase 3: Deployment
 - [ ] Dockerfile (multi-stage build)
@@ -284,18 +286,28 @@ cat examples/submit_mpi.json | ./bin/server
 - **#1**: Go module initialized, directory structure created (commit `34851b7`)
 - **#2**: Makefile with standard Go targets (commit `e6f4d4d`)
 - **#3**: K8s client with context selection and unit tests (commit `ecde20f`)
-- **#4**: MCP server skeleton with stdio transport (pending commit)
+- **#4**: MCP server skeleton with stdio transport, tool registration
+
+### Recently Implemented (pending commit)
+- **Tool Handlers**: All 5 MCP tool handlers implemented in `internal/mcp/handlers.go`
+  - `handleSubmitMPIJob` - validates, generates unique name, builds/submits MPIJob
+  - `handleSubmitMonteCarlo` - validates, generates JobSet with completion index hint
+  - `handleSubmitReducer` - validates, builds/submits batch Job
+  - `handleCheckStatus` - queries status for mpijob/jobset/job types
+  - `handleReadArtifactHead` - path validation (full impl requires ephemeral pod)
+- **Server Config**: Environment-variable-driven configuration (`PVC_NAME`, `PVC_MOUNT_PATH`, `KUEUE_QUEUE`, `DEFAULT_IMAGE`)
+- **Helpers**: `generateJobName()`, `resolveNamespace()`, `validateCode()`, `validateArtifactPath()`
 
 ### Next Steps (P0 Priority)
-1. **Issues #6-8**: Manifest builders (MPIJob, JobSet, Job)
-2. **Issues #9-13**: MCP tool implementations
+1. **Issues #6-8**: Complete manifest builders (MPIJob, JobSet specs are placeholders)
+2. **Issue #13**: Implement ephemeral pod reader for `read_artifact_head`
 
 ### Open Issues Summary
 | Issue | Title | Priority |
 |-------|-------|----------|
 | #5 | CI workflow | P1 |
-| #6-8 | Manifest builders | P0 |
-| #9-14 | MCP tool implementations | P0 |
+| #6-8 | Complete manifest builders (full specs) | P0 |
+| #13 | read_artifact_head ephemeral pod | P1 |
 | #15-21 | Deployment/Docs | P1-P2 |
 | #22 | E2E testing with KIND | P1 |
 | #23 | Configurable resources | P1 |
@@ -303,5 +315,5 @@ cat examples/submit_mpi.json | ./bin/server
 
 ---
 
-**Last Updated**: 2026-01-23  
+**Last Updated**: 2026-01-24  
 **Maintainer**: [@ArangoGutierrez](https://github.com/ArangoGutierrez)
