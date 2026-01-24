@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/info"
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
@@ -22,10 +23,44 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// ServerConfig holds configuration for the MCP server.
+type ServerConfig struct {
+	// PVCName is the name of the shared PVC for job data.
+	PVCName string
+
+	// PVCMountPath is the mount path for the shared PVC.
+	PVCMountPath string
+
+	// KueueQueue is the default Kueue queue name for scheduling.
+	KueueQueue string
+
+	// DefaultImage is the default container image for Python workloads.
+	DefaultImage string
+}
+
+// DefaultServerConfig returns the default server configuration,
+// reading from environment variables with sensible defaults.
+func DefaultServerConfig() ServerConfig {
+	return ServerConfig{
+		PVCName:      getEnvOrDefault("PVC_NAME", "compute-data"),
+		PVCMountPath: getEnvOrDefault("PVC_MOUNT_PATH", "/mnt/data"),
+		KueueQueue:   getEnvOrDefault("KUEUE_QUEUE", "default-queue"),
+		DefaultImage: getEnvOrDefault("DEFAULT_IMAGE", "python:3.11-slim"),
+	}
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
+}
+
 // Server represents the MCP server instance.
 type Server struct {
 	mcpServer *server.MCPServer
 	k8sClient *k8s.Client
+	config    ServerConfig
 }
 
 // NewServer creates a new MCP server instance.
@@ -33,7 +68,16 @@ type Server struct {
 // The K8s client is configured via environment variables:
 //   - KUBECONFIG: Path to kubeconfig file (default: ~/.kube/config)
 //   - KUBE_CONTEXT: Kubernetes context to use (default: current context)
+//
+// Additional configuration via environment variables:
+//   - PVC_NAME: Name of the shared PVC (default: compute-data)
+//   - PVC_MOUNT_PATH: Mount path for the PVC (default: /mnt/data)
+//   - KUEUE_QUEUE: Default Kueue queue name (default: default-queue)
+//   - DEFAULT_IMAGE: Default container image (default: python:3.11-slim)
 func NewServer() (*Server, error) {
+	// Load configuration from environment
+	config := DefaultServerConfig()
+
 	// Initialize K8s client using environment configuration
 	client, err := k8s.NewClient()
 	if err != nil {
@@ -56,10 +100,14 @@ func NewServer() (*Server, error) {
 	s := &Server{
 		mcpServer: mcpServer,
 		k8sClient: client,
+		config:    config,
 	}
 
 	// Register tools
 	s.registerTools()
+
+	log.Printf("Server config: PVC=%s, MountPath=%s, KueueQueue=%s",
+		config.PVCName, config.PVCMountPath, config.KueueQueue)
 
 	return s, nil
 }
