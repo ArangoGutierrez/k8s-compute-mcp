@@ -18,10 +18,13 @@ import (
 
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/info"
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // Server represents the MCP server instance.
 type Server struct {
+	mcpServer *server.MCPServer
 	k8sClient *k8s.Client
 }
 
@@ -37,19 +40,128 @@ func NewServer() (*Server, error) {
 		return nil, fmt.Errorf("failed to create k8s client: %w", err)
 	}
 
-	return &Server{
+	// Create MCP server with tool capabilities enabled
+	mcpServer := server.NewMCPServer(
+		info.Name,
+		info.Version,
+		server.WithToolCapabilities(true),
+		server.WithRecovery(), // Panic recovery for robustness
+		server.WithInstructions(
+			"k8s-compute-mcp enables LLMs to offload heavy mathematical and financial "+
+				"computations to a Kubernetes cluster using specialized operators like "+
+				"Kubeflow MPI-Operator and JobSet.",
+		),
+	)
+
+	s := &Server{
+		mcpServer: mcpServer,
 		k8sClient: client,
-	}, nil
+	}
+
+	// Register tools
+	s.registerTools()
+
+	return s, nil
+}
+
+// registerTools registers all MCP tools with the server.
+func (s *Server) registerTools() {
+	// submit_mpi_job - Submit MPI workloads
+	submitMPIJobTool := mcp.NewTool(
+		"submit_mpi_job",
+		mcp.WithDescription(
+			"Submit an MPI workload to the Kubernetes cluster. "+
+				"Returns immediately with a job ID (non-blocking). "+
+				"Use check_status to monitor progress.",
+		),
+		mcp.WithInputSchema[SubmitMPIJobInput](),
+	)
+	s.mcpServer.AddTool(submitMPIJobTool, newToolHandler(s.handleSubmitMPIJob))
+
+	// submit_monte_carlo_batch - Submit parallel Monte Carlo simulations
+	submitMonteCarloTool := mcp.NewTool(
+		"submit_monte_carlo_batch",
+		mcp.WithDescription(
+			"Submit a batch of parallel Monte Carlo simulations using JobSet. "+
+				"Each replica gets a unique JOB_COMPLETION_INDEX for output path uniqueness. "+
+				"Returns immediately with a job ID (non-blocking).",
+		),
+		mcp.WithInputSchema[SubmitMonteCarloInput](),
+	)
+	s.mcpServer.AddTool(submitMonteCarloTool, newToolHandler(s.handleSubmitMonteCarlo))
+
+	// submit_reducer - Submit result aggregation jobs
+	submitReducerTool := mcp.NewTool(
+		"submit_reducer",
+		mcp.WithDescription(
+			"Submit a job to aggregate results from Monte Carlo simulations or other batch jobs. "+
+				"Returns immediately with a job ID (non-blocking).",
+		),
+		mcp.WithInputSchema[SubmitReducerInput](),
+	)
+	s.mcpServer.AddTool(submitReducerTool, newToolHandler(s.handleSubmitReducer))
+
+	// check_status - Query job status
+	checkStatusTool := mcp.NewTool(
+		"check_status",
+		mcp.WithDescription(
+			"Check the status of a submitted job. "+
+				"Returns phase (Pending/Running/Succeeded/Failed) and replica counts.",
+		),
+		mcp.WithInputSchema[CheckStatusInput](),
+	)
+	s.mcpServer.AddTool(checkStatusTool, newToolHandler(s.handleCheckStatus))
+
+	// read_artifact_head - Read result files
+	readArtifactTool := mcp.NewTool(
+		"read_artifact_head",
+		mcp.WithDescription(
+			"Read the first N lines of a result file from the shared storage (PVC at /mnt/data). "+
+				"Useful for inspecting job outputs without downloading entire files.",
+		),
+		mcp.WithInputSchema[ReadArtifactInput](),
+	)
+	s.mcpServer.AddTool(readArtifactTool, newToolHandler(s.handleReadArtifactHead))
+
+	log.Printf("Registered %d MCP tools", 5)
+}
+
+// newToolHandler creates a type-safe MCP tool handler wrapper.
+// This is a generic function that bridges typed handler signatures with mcp-go.
+func newToolHandler[T any, R any](
+	handler func(context.Context, T) (*R, error),
+) server.ToolHandlerFunc {
+	return mcp.NewTypedToolHandler(
+		func(ctx context.Context, req mcp.CallToolRequest, args T) (*mcp.CallToolResult, error) {
+			result, err := handler(ctx, args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultStructured(result, ""), nil
+		},
+	)
 }
 
 // Run starts the MCP server with stdio transport.
 // It blocks until the context is cancelled or an error occurs.
 func (s *Server) Run(ctx context.Context) error {
-	log.Printf("MCP server %s ready, listening on stdio", info.Version)
+	log.Printf("MCP server %s ready, context: %s, namespace: %s",
+		info.Version, s.k8sClient.Context(), s.k8sClient.Namespace())
 
-	// TODO: Implement MCP protocol handling with mcp-go
-	// This will be implemented in issue #4
+	// Start stdio transport - this blocks until completion
+	// Note: ServeStdio doesn't accept context, so we use a goroutine pattern
+	errChan := make(chan error, 1)
 
-	<-ctx.Done()
-	return ctx.Err()
+	go func() {
+		errChan <- server.ServeStdio(s.mcpServer)
+	}()
+
+	// Wait for either context cancellation or server error
+	select {
+	case <-ctx.Done():
+		log.Printf("Context cancelled, shutting down MCP server")
+		return ctx.Err()
+	case err := <-errChan:
+		return err
+	}
 }

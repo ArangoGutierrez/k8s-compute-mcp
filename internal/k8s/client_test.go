@@ -181,6 +181,7 @@ type MockClient struct {
 // NewMockClient creates a Client with fake clientsets for unit testing.
 // Pass initial objects to pre-populate the fake clients.
 func NewMockClient(objects ...runtime.Object) *MockClient {
+	//nolint:staticcheck // SA1019: NewSimpleClientset is deprecated but NewClientset requires applyconfig generation
 	fakeClientset := kubefake.NewSimpleClientset(objects...)
 	fakeDynamic := fake.NewSimpleDynamicClient(runtime.NewScheme())
 

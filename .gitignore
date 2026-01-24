@@ -71,9 +71,9 @@ go.sum.backup
 Thumbs.db
 desktop.ini
 
-# Project-specific
-server
-k8s-compute-mcp
+# Project-specific binaries (at root only)
+/server
+/k8s-compute-mcp
 
 # Prompt working files (keep templates only)
 docs/prompts/*.md

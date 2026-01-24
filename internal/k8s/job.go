@@ -43,10 +43,10 @@ type ReducerJobConfig struct {
 // BuildReducerJob creates a Batch Job manifest for result aggregation.
 func BuildReducerJob(cfg ReducerJobConfig) (*batchv1.Job, error) {
 	if cfg.Name == "" {
-		return nil, fmt.Errorf("Job name is required")
+		return nil, fmt.Errorf("job name is required")
 	}
 	if cfg.Script == "" {
-		return nil, fmt.Errorf("Job script is required")
+		return nil, fmt.Errorf("job script is required")
 	}
 
 	// Set defaults

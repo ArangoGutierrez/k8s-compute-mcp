@@ -284,15 +284,15 @@ cat examples/submit_mpi.json | ./bin/server
 - **#1**: Go module initialized, directory structure created (commit `34851b7`)
 - **#2**: Makefile with standard Go targets (commit `e6f4d4d`)
 - **#3**: K8s client with context selection and unit tests (commit `ecde20f`)
+- **#4**: MCP server skeleton with stdio transport (pending commit)
 
 ### Next Steps (P0 Priority)
-1. **Issue #4**: Set up basic MCP server skeleton (stdio transport)
-2. **Issues #6-8**: Manifest builders (MPIJob, JobSet, Job)
+1. **Issues #6-8**: Manifest builders (MPIJob, JobSet, Job)
+2. **Issues #9-13**: MCP tool implementations
 
 ### Open Issues Summary
 | Issue | Title | Priority |
 |-------|-------|----------|
-| #4 | MCP server skeleton | P0 |
 | #5 | CI workflow | P1 |
 | #6-8 | Manifest builders | P0 |
 | #9-14 | MCP tool implementations | P0 |
