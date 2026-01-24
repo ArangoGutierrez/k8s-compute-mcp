@@ -1,0 +1,12 @@
+.git
+.gitignore
+bin/
+dist/
+test/
+docs/
+prompts/
+deployment/
+README.md
+LICENSE
+Makefile
+*.md

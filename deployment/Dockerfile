@@ -7,7 +7,7 @@
 FROM golang:1.25-alpine AS builder
 
 # Install git for version info (optional, graceful degradation if missing)
-RUN apk add --no-cache git
+# RUN apk add --no-cache git
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ ARG GIT_COMMIT=unknown
 
 # Build static binary
 # Note: Uses PascalCase variable names to match internal/info/info.go
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false \
     -ldflags="-s -w \
         -X github.com/ArangoGutierrez/k8s-compute-mcp/internal/info.Version=${VERSION} \
         -X github.com/ArangoGutierrez/k8s-compute-mcp/internal/info.GitCommit=${GIT_COMMIT}" \
