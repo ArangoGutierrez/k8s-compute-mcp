@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
 	"k8s.io/apimachinery/pkg/util/rand"
+
+	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
 )
 
 // generateJobName creates a unique job name with the given prefix.
@@ -31,30 +32,13 @@ func (s *Server) resolveNamespace(ns string) string {
 
 // validateCode performs basic validation on user-provided code.
 // Returns an error if the code appears to be malicious or invalid.
-func validateCode(code, language string) error {
+func validateCode(code string) error {
 	if strings.TrimSpace(code) == "" {
 		return fmt.Errorf("code cannot be empty")
 	}
 
-	// Check for obviously dangerous patterns
-	// Note: This is basic validation; production systems should use sandboxing
-	dangerousPatterns := []string{
-		"os.system",
-		"subprocess.call",
-		"subprocess.run",
-		"subprocess.Popen",
-		"__import__",
-		"eval(",
-		"exec(",
-	}
-
-	codeLower := strings.ToLower(code)
-	for _, pattern := range dangerousPatterns {
-		if strings.Contains(codeLower, strings.ToLower(pattern)) {
-			// Log but don't block - the cluster has its own security
-			// In production, you might want stricter validation
-		}
-	}
+	// Note: Additional validation (dangerous patterns, etc.) could be added here.
+	// The cluster has its own security boundaries, so we keep validation minimal.
 
 	return nil
 }
@@ -65,7 +49,7 @@ func validateCode(code, language string) error {
 // This handler returns immediately after submission (non-blocking).
 func (s *Server) handleSubmitMPIJob(ctx context.Context, input SubmitMPIJobInput) (*SubmitResult, error) {
 	// 1. Validate input
-	if err := validateCode(input.Code, input.Language); err != nil {
+	if err := validateCode(input.Code); err != nil {
 		return nil, fmt.Errorf("invalid code: %w", err)
 	}
 
@@ -115,7 +99,7 @@ func (s *Server) handleSubmitMPIJob(ctx context.Context, input SubmitMPIJobInput
 // CRITICAL: Injects JOB_COMPLETION_INDEX into output paths to prevent data races.
 func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCarloInput) (*SubmitResult, error) {
 	// 1. Validate script
-	if err := validateCode(input.Script, "python"); err != nil {
+	if err := validateCode(input.Script); err != nil {
 		return nil, fmt.Errorf("invalid script: %w", err)
 	}
 
@@ -123,12 +107,8 @@ func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCa
 		return nil, fmt.Errorf("replicas must be at least 1, got %d", input.Replicas)
 	}
 
-	// Warn if script doesn't reference JOB_COMPLETION_INDEX (but don't block)
-	// The JobSet controller injects this env var automatically
-	if !strings.Contains(input.Script, "JOB_COMPLETION_INDEX") {
-		// Log a warning - script should use this for unique output paths
-		// This is a hint, not a hard requirement
-	}
+	// Note: Scripts should use JOB_COMPLETION_INDEX env var for unique output paths.
+	// The JobSet controller injects this automatically.
 
 	// 2. Generate unique JobSet name
 	jobName := generateJobName("mc")
@@ -170,7 +150,7 @@ func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCa
 // It generates a Batch Job manifest for result aggregation.
 func (s *Server) handleSubmitReducer(ctx context.Context, input SubmitReducerInput) (*SubmitResult, error) {
 	// 1. Validate input
-	if err := validateCode(input.Script, "python"); err != nil {
+	if err := validateCode(input.Script); err != nil {
 		return nil, fmt.Errorf("invalid script: %w", err)
 	}
 
@@ -273,14 +253,15 @@ func (s *Server) getBatchJobStatus(ctx context.Context, namespace, name string) 
 	}
 
 	// Determine phase from Job conditions and counts
-	phase := "Unknown"
-	if status.Succeeded > 0 {
+	var phase string
+	switch {
+	case status.Succeeded > 0:
 		phase = "Succeeded"
-	} else if status.Failed > 0 {
+	case status.Failed > 0:
 		phase = "Failed"
-	} else if status.Active > 0 {
+	case status.Active > 0:
 		phase = "Running"
-	} else {
+	default:
 		phase = "Pending"
 	}
 

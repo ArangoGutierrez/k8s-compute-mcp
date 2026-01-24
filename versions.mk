@@ -15,7 +15,7 @@ LIB_TAG :=
 GOLANG_VERSION := 1.25
 
 # Tool versions
-GOLANGCI_LINT_VERSION := v1.64.7
+GOLANGCI_LINT_VERSION := v2.8.0
 
 # =============================================================================
 # Git Information (auto-detected)

@@ -158,7 +158,7 @@ lint: ## Run golangci-lint
 COVERAGE_FILE := coverage.out
 
 test: build ## Run unit tests with race detector
-	go test -v -count=1 -race ./...
+	CGO_ENABLED=1 go test -v -count=1 -race ./...
 	@echo "✓ Tests passed"
 
 test-short: ## Run unit tests without race detector (faster)

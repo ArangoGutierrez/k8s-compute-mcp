@@ -166,7 +166,7 @@ func (c *Client) ReadArtifactHead(ctx context.Context, cfg ReadArtifactConfig) (
 
 	// Ensure cleanup happens regardless of outcome
 	defer func() {
-		// Use background context for cleanup since original context may be cancelled
+		// Use background context for cleanup since original context may be canceled
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = c.deleteReaderPod(cleanupCtx, cfg.Namespace, podName)
@@ -244,7 +244,7 @@ func (c *Client) getPodLogs(ctx context.Context, namespace, name string) (string
 	if err != nil {
 		return "", fmt.Errorf("failed to get log stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, stream); err != nil {

@@ -1,0 +1,52 @@
+# Copyright 2026 k8s-compute-mcp contributors
+# SPDX-License-Identifier: Apache-2.0
+
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - unparam
+    - prealloc
+
+  settings:
+    misspell:
+      locale: US
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+    rules:
+      # Allow unchecked errors in tests
+      - path: '_test\.go'
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ArangoGutierrez/k8s-compute-mcp
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
