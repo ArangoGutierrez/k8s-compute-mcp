@@ -140,14 +140,16 @@ func BuildMPIJob(name string, replicas int, code string) *mpiv2beta1.MPIJob {
 - [x] K8s client configuration (out-of-cluster) (Issue #3)
 - [x] Basic MCP server skeleton (Issue #4)
 
-### Phase 2: Core Tools
-- [x] `submit_mpi_job` handler implementation
-- [x] `submit_monte_carlo_batch` handler implementation
-- [x] `submit_reducer` handler implementation
-- [x] `check_status` handler implementation
-- [ ] `read_artifact_head` implementation (validation only, needs ephemeral pod reader)
-- [ ] MPIJob manifest builder (full spec - currently placeholder)
-- [ ] JobSet manifest builder (full spec - currently placeholder)
+### Phase 2: Core Tools (COMPLETE)
+- [x] `submit_mpi_job` handler implementation (Issue #9)
+- [x] `submit_monte_carlo_batch` handler implementation (Issue #10)
+- [x] `submit_reducer` handler implementation (Issue #11)
+- [x] `check_status` handler implementation (Issue #12)
+- [x] `read_artifact_head` implementation with ephemeral pod reader (Issue #13)
+- [x] MPIJob manifest builder - `internal/k8s/mpijob.go` (Issue #6)
+- [x] JobSet manifest builder - `internal/k8s/jobset.go` (Issue #7)
+- [x] Batch Job manifest builder - `internal/k8s/job.go` (Issue #8)
+- [x] All tools registered in MCP server (Issue #14)
 
 ### Phase 3: Deployment
 - [ ] Dockerfile (multi-stage build)
@@ -282,33 +284,45 @@ cat examples/submit_mpi.json | ./bin/server
 
 ## Current Status
 
-### Completed Issues
-- **#1**: Go module initialized, directory structure created (commit `34851b7`)
-- **#2**: Makefile with standard Go targets (commit `e6f4d4d`)
-- **#3**: K8s client with context selection and unit tests (commit `ecde20f`)
-- **#4**: MCP server skeleton with stdio transport, tool registration
+**Phase 1 (Foundation)**: COMPLETE  
+**Phase 2 (Core Tools)**: COMPLETE  
+**Phase 3 (Deployment)**: NOT STARTED
 
-### Recently Implemented (pending commit)
-- **Tool Handlers**: All 5 MCP tool handlers implemented in `internal/mcp/handlers.go`
-  - `handleSubmitMPIJob` - validates, generates unique name, builds/submits MPIJob
-  - `handleSubmitMonteCarlo` - validates, generates JobSet with completion index hint
-  - `handleSubmitReducer` - validates, builds/submits batch Job
-  - `handleCheckStatus` - queries status for mpijob/jobset/job types
-  - `handleReadArtifactHead` - path validation (full impl requires ephemeral pod)
-- **Server Config**: Environment-variable-driven configuration (`PVC_NAME`, `PVC_MOUNT_PATH`, `KUEUE_QUEUE`, `DEFAULT_IMAGE`)
-- **Helpers**: `generateJobName()`, `resolveNamespace()`, `validateCode()`, `validateArtifactPath()`
+### Completed Issues (Phase 1 & 2)
+| Issue | Title | Status |
+|-------|-------|--------|
+| #1 | Go module initialized, directory structure | ✅ Complete |
+| #2 | Makefile with standard Go targets | ✅ Complete |
+| #3 | K8s client with context selection | ✅ Complete |
+| #4 | MCP server skeleton (stdio transport) | ✅ Complete |
+| #6 | MPIJob manifest builder | ✅ Complete |
+| #7 | JobSet manifest builder | ✅ Complete |
+| #8 | Batch Job manifest builder | ✅ Complete |
+| #9 | `submit_mpi_job` tool handler | ✅ Complete |
+| #10 | `submit_monte_carlo_batch` tool handler | ✅ Complete |
+| #11 | `submit_reducer` tool handler | ✅ Complete |
+| #12 | `check_status` tool handler | ✅ Complete |
+| #13 | `read_artifact_head` with ephemeral pod | ✅ Complete |
+| #14 | Register all tools in MCP server | ✅ Complete |
 
-### Next Steps (P0 Priority)
-1. **Issues #6-8**: Complete manifest builders (MPIJob, JobSet specs are placeholders)
-2. **Issue #13**: Implement ephemeral pod reader for `read_artifact_head`
+### Implementation Summary
+- **K8s Client**: `internal/k8s/client.go` - Out-of-cluster config, context selection
+- **Manifest Builders**: `internal/k8s/{mpijob,jobset,job,reader}.go`
+- **MCP Server**: `internal/mcp/server.go` - 5 tools registered with type-safe schemas
+- **Handlers**: `internal/mcp/handlers.go` - Non-blocking submissions, status queries
+- **Test Coverage**: 43.6% (manifest builders and reader well-tested)
 
-### Open Issues Summary
+### Open Issues Summary (Phase 3 + Enhancements)
 | Issue | Title | Priority |
 |-------|-------|----------|
 | #5 | CI workflow | P1 |
-| #6-8 | Complete manifest builders (full specs) | P0 |
-| #13 | read_artifact_head ephemeral pod | P1 |
-| #15-21 | Deployment/Docs | P1-P2 |
+| #15 | Multi-stage Dockerfile | P1 |
+| #16 | Helm chart | P1 |
+| #17 | Example CRD manifests | P2 |
+| #18 | Example MCP requests | P2 |
+| #19 | MCP prompt templates | P2 |
+| #20 | Release workflow (GoReleaser) | P2 |
+| #21 | Security scanning | P2 |
 | #22 | E2E testing with KIND | P1 |
 | #23 | Configurable resources | P1 |
 | #24 | GPU workload support | P1 |

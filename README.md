@@ -236,13 +236,21 @@ LLM → k8s-compute-mcp → submit_monte_carlo_batch(replicas=500)
 
 ## Project Status
 
-**Current Phase:** Phase 1 - Foundation
+**Current Phase:** Phase 3 - Deployment
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| Phase 1 | In Progress | Repository setup, K8s client, MCP skeleton |
-| Phase 2 | Planned | Core tool implementations |
-| Phase 3 | Planned | Deployment, Helm chart, CI/CD |
+| Phase 1 | **Complete** | Repository setup, K8s client, MCP skeleton |
+| Phase 2 | **Complete** | All 5 core tools implemented and tested |
+| Phase 3 | In Progress | Deployment, Helm chart, CI/CD |
+
+### Implemented Tools
+All 5 MCP tools are fully functional:
+- `submit_mpi_job` - MPIJob submission via Kubeflow MPI Operator
+- `submit_monte_carlo_batch` - Parallel simulations via JobSet
+- `submit_reducer` - Result aggregation via Batch Job
+- `check_status` - Real-time job status queries
+- `read_artifact_head` - File reading via ephemeral pods
 
 See [Issues](https://github.com/ArangoGutierrez/k8s-compute-mcp/issues) for detailed roadmap.
 
