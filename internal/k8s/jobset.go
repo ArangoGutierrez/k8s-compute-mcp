@@ -48,9 +48,13 @@ type JobSetConfig struct {
 
 // BuildJobSet creates an unstructured JobSet manifest.
 //
-// CRITICAL: The generated manifest injects JOB_COMPLETION_INDEX into the
-// container environment to enable output isolation and prevent data races
-// when multiple replicas write to the shared PVC.
+// The generated JobSet uses indexed completions to enable parallel Monte Carlo
+// simulations. Each pod receives a unique JOB_COMPLETION_INDEX environment
+// variable (automatically injected by Kubernetes for indexed jobs).
+//
+// CRITICAL: Scripts should use JOB_COMPLETION_INDEX to create unique output
+// paths, preventing data races when multiple pods write to the shared PVC.
+// Example: output_path = f"/mnt/data/results_{os.environ['JOB_COMPLETION_INDEX']}.json"
 //
 // Note: We use unstructured here to avoid importing the full jobset
 // dependency. For production, consider importing the typed structs from
@@ -77,31 +81,112 @@ func BuildJobSet(cfg JobSetConfig) (*unstructured.Unstructured, error) {
 		cfg.MountPath = "/mnt/data"
 	}
 
-	// TODO: Implement full JobSet manifest in issue #7
-	// This is a placeholder structure
-	jobset := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "jobset.x-k8s.io/v1alpha2",
-			"kind":       "JobSet",
-			"metadata": map[string]interface{}{
-				"name":      cfg.Name,
-				"namespace": cfg.Namespace,
+	// Build environment variables
+	// JOB_COMPLETION_INDEX is automatically injected by Kubernetes for indexed jobs
+	// We add MOUNT_PATH for convenience in scripts
+	env := []interface{}{
+		map[string]interface{}{
+			"name":  "MOUNT_PATH",
+			"value": cfg.MountPath,
+		},
+	}
+
+	// Build container spec
+	container := map[string]interface{}{
+		"name":    "worker",
+		"image":   cfg.Image,
+		"command": []interface{}{"python", "-c", cfg.Script},
+		"env":     env,
+		"resources": map[string]interface{}{
+			"limits": map[string]interface{}{
+				"cpu":    "1",
+				"memory": "2Gi",
 			},
-			"spec": map[string]interface{}{
-				// Placeholder - full spec in issue #7
-				// MUST include JOB_COMPLETION_INDEX env var injection
+			"requests": map[string]interface{}{
+				"cpu":    "500m",
+				"memory": "1Gi",
 			},
 		},
 	}
 
+	// Add volume mount if PVC is configured
+	if cfg.PVCName != "" {
+		container["volumeMounts"] = []interface{}{
+			map[string]interface{}{
+				"name":      "data",
+				"mountPath": cfg.MountPath,
+			},
+		}
+	}
+
+	// Build pod spec
+	podSpec := map[string]interface{}{
+		"containers":    []interface{}{container},
+		"restartPolicy": "Never",
+	}
+
+	// Add volumes if PVC is configured
+	if cfg.PVCName != "" {
+		podSpec["volumes"] = []interface{}{
+			map[string]interface{}{
+				"name": "data",
+				"persistentVolumeClaim": map[string]interface{}{
+					"claimName": cfg.PVCName,
+				},
+			},
+		}
+	}
+
+	// Build Job template spec
+	// completionMode: Indexed enables JOB_COMPLETION_INDEX injection
+	jobTemplateSpec := map[string]interface{}{
+		"parallelism":    int64(cfg.Replicas),
+		"completions":    int64(cfg.Replicas),
+		"completionMode": "Indexed",
+		"backoffLimit":   int64(3),
+		"template": map[string]interface{}{
+			"spec": podSpec,
+		},
+	}
+
+	// Build JobSet spec with replicatedJobs
+	// We use a single replicatedJob with indexed completions
+	spec := map[string]interface{}{
+		"replicatedJobs": []interface{}{
+			map[string]interface{}{
+				"name":     "workers",
+				"replicas": int64(1), // One Job object
+				"template": map[string]interface{}{
+					"spec": jobTemplateSpec,
+				},
+			},
+		},
+		"successPolicy": map[string]interface{}{
+			"operator":             "All",
+			"targetReplicatedJobs": []interface{}{"workers"},
+		},
+	}
+
+	// Build metadata
+	metadata := map[string]interface{}{
+		"name":      cfg.Name,
+		"namespace": cfg.Namespace,
+	}
+
 	// Add Kueue annotation if specified
 	if cfg.KueueQueue != "" {
-		annotations := map[string]interface{}{
+		metadata["annotations"] = map[string]interface{}{
 			"kueue.x-k8s.io/queue-name": cfg.KueueQueue,
 		}
-		if err := unstructured.SetNestedField(jobset.Object, annotations, "metadata", "annotations"); err != nil {
-			return nil, fmt.Errorf("failed to set annotations: %w", err)
-		}
+	}
+
+	jobset := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "jobset.x-k8s.io/v1alpha2",
+			"kind":       "JobSet",
+			"metadata":   metadata,
+			"spec":       spec,
+		},
 	}
 
 	return jobset, nil

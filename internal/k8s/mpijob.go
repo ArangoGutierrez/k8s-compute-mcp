@@ -6,6 +6,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -51,6 +52,10 @@ type MPIJobConfig struct {
 
 // BuildMPIJob creates an unstructured MPIJob manifest.
 //
+// The generated MPIJob has:
+//   - Launcher pod (1 replica): Runs mpirun to coordinate the job
+//   - Worker pods (cfg.Replicas): Execute the actual MPI computation
+//
 // Note: We use unstructured here to avoid importing the full mpi-operator
 // dependency. For production, consider importing the typed structs from
 // github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v2beta1.
@@ -70,39 +75,189 @@ func BuildMPIJob(cfg MPIJobConfig) (*unstructured.Unstructured, error) {
 		cfg.Namespace = "default"
 	}
 	if cfg.Image == "" {
-		cfg.Image = "python:3.11-slim"
+		cfg.Image = "mpioperator/openmpi-builder:latest"
 	}
 	if cfg.MountPath == "" {
 		cfg.MountPath = "/mnt/data"
 	}
+	if cfg.Language == "" {
+		cfg.Language = "python"
+	}
 
-	// TODO: Implement full MPIJob manifest in issue #6
-	// This is a placeholder structure
-	mpijob := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "kubeflow.org/v2beta1",
-			"kind":       "MPIJob",
-			"metadata": map[string]interface{}{
-				"name":      cfg.Name,
-				"namespace": cfg.Namespace,
+	// Build command based on language
+	command, args := buildMPICommand(cfg)
+
+	// Build container spec (reused for launcher and worker with slight modifications)
+	workerContainer := buildMPIContainer("worker", cfg.Image, nil, nil, cfg.PVCName, cfg.MountPath)
+	launcherContainer := buildMPIContainer("launcher", cfg.Image, command, args, cfg.PVCName, cfg.MountPath)
+
+	// Build volume specs if PVC is configured
+	var volumes []interface{}
+	if cfg.PVCName != "" {
+		volumes = []interface{}{
+			map[string]interface{}{
+				"name": "data",
+				"persistentVolumeClaim": map[string]interface{}{
+					"claimName": cfg.PVCName,
+				},
 			},
-			"spec": map[string]interface{}{
-				// Placeholder - full spec in issue #6
+		}
+	}
+
+	// Build Launcher pod template
+	launcherPodSpec := map[string]interface{}{
+		"containers":    []interface{}{launcherContainer},
+		"restartPolicy": "Never",
+	}
+	if len(volumes) > 0 {
+		launcherPodSpec["volumes"] = volumes
+	}
+
+	// Build Worker pod template
+	workerPodSpec := map[string]interface{}{
+		"containers":    []interface{}{workerContainer},
+		"restartPolicy": "Never",
+	}
+	if len(volumes) > 0 {
+		workerPodSpec["volumes"] = volumes
+	}
+
+	// Build MPIJob spec
+	spec := map[string]interface{}{
+		"slotsPerWorker": int64(1),
+		"runPolicy": map[string]interface{}{
+			"cleanPodPolicy": "Running",
+		},
+		"mpiReplicaSpecs": map[string]interface{}{
+			"Launcher": map[string]interface{}{
+				"replicas": int64(1),
+				"template": map[string]interface{}{
+					"spec": launcherPodSpec,
+				},
+			},
+			"Worker": map[string]interface{}{
+				"replicas": int64(cfg.Replicas),
+				"template": map[string]interface{}{
+					"spec": workerPodSpec,
+				},
 			},
 		},
 	}
 
+	// Build metadata
+	metadata := map[string]interface{}{
+		"name":      cfg.Name,
+		"namespace": cfg.Namespace,
+	}
+
 	// Add Kueue annotation if specified
 	if cfg.KueueQueue != "" {
-		annotations := map[string]interface{}{
+		metadata["annotations"] = map[string]interface{}{
 			"kueue.x-k8s.io/queue-name": cfg.KueueQueue,
-		}
-		if err := unstructured.SetNestedField(mpijob.Object, annotations, "metadata", "annotations"); err != nil {
-			return nil, fmt.Errorf("failed to set annotations: %w", err)
 		}
 	}
 
+	mpijob := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "kubeflow.org/v2beta1",
+			"kind":       "MPIJob",
+			"metadata":   metadata,
+			"spec":       spec,
+		},
+	}
+
 	return mpijob, nil
+}
+
+// buildMPICommand constructs the mpirun command based on language.
+// Returns the command and args separately for the container spec.
+func buildMPICommand(cfg MPIJobConfig) ([]string, []string) {
+	switch cfg.Language {
+	case "python":
+		// For Python: mpirun python -c "<code>"
+		return []string{"mpirun"}, []string{
+			"--allow-run-as-root",
+			"-np", fmt.Sprintf("%d", cfg.Replicas),
+			"python", "-c", cfg.Code,
+		}
+	case "cpp", "c++":
+		// For C++: Write code to file, compile with mpicxx, run with mpirun
+		// This uses a shell wrapper to handle compilation
+		script := fmt.Sprintf(`
+set -e
+echo '%s' > /tmp/mpi_code.cpp
+mpicxx -o /tmp/mpi_program /tmp/mpi_code.cpp
+mpirun --allow-run-as-root -np %d /tmp/mpi_program
+`, escapeShellString(cfg.Code), cfg.Replicas)
+		return []string{"/bin/sh"}, []string{"-c", script}
+	default:
+		// Default to Python
+		return []string{"mpirun"}, []string{
+			"--allow-run-as-root",
+			"-np", fmt.Sprintf("%d", cfg.Replicas),
+			"python", "-c", cfg.Code,
+		}
+	}
+}
+
+// escapeShellString escapes single quotes in a string for shell embedding.
+func escapeShellString(s string) string {
+	// Replace single quotes with '\'' (end quote, escaped quote, start quote)
+	return strings.ReplaceAll(s, "'", "'\"'\"'")
+}
+
+// buildMPIContainer creates a container spec for MPIJob.
+// For workers, command and args should be nil (mpi-operator handles this).
+func buildMPIContainer(name, image string, command, args []string, pvcName, mountPath string) map[string]interface{} {
+	container := map[string]interface{}{
+		"name":  name,
+		"image": image,
+		"env": []interface{}{
+			map[string]interface{}{
+				"name":  "MOUNT_PATH",
+				"value": mountPath,
+			},
+		},
+		"resources": map[string]interface{}{
+			"limits": map[string]interface{}{
+				"cpu":    "1",
+				"memory": "2Gi",
+			},
+			"requests": map[string]interface{}{
+				"cpu":    "500m",
+				"memory": "1Gi",
+			},
+		},
+	}
+
+	// Only set command/args for launcher (workers are controlled by mpi-operator)
+	if len(command) > 0 {
+		container["command"] = toInterfaceSlice(command)
+	}
+	if len(args) > 0 {
+		container["args"] = toInterfaceSlice(args)
+	}
+
+	// Add volume mount if PVC is configured
+	if pvcName != "" {
+		container["volumeMounts"] = []interface{}{
+			map[string]interface{}{
+				"name":      "data",
+				"mountPath": mountPath,
+			},
+		}
+	}
+
+	return container
+}
+
+// toInterfaceSlice converts a string slice to an interface slice.
+func toInterfaceSlice(ss []string) []interface{} {
+	result := make([]interface{}, len(ss))
+	for i, s := range ss {
+		result[i] = s
+	}
+	return result
 }
 
 // SubmitMPIJob applies an MPIJob manifest to the cluster.
