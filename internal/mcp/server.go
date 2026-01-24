@@ -17,10 +17,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/info"
-	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+
+	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/info"
+	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
 )
 
 // ServerConfig holds configuration for the MCP server.
@@ -191,7 +192,7 @@ func newToolHandler[T any, R any](
 }
 
 // Run starts the MCP server with stdio transport.
-// It blocks until the context is cancelled or an error occurs.
+// It blocks until the context is canceled or an error occurs.
 func (s *Server) Run(ctx context.Context) error {
 	log.Printf("MCP server %s ready, context: %s, namespace: %s",
 		info.Version, s.k8sClient.Context(), s.k8sClient.Namespace())
@@ -207,7 +208,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Wait for either context cancellation or server error
 	select {
 	case <-ctx.Done():
-		log.Printf("Context cancelled, shutting down MCP server")
+		log.Printf("Context canceled, shutting down MCP server")
 		return ctx.Err()
 	case err := <-errChan:
 		return err

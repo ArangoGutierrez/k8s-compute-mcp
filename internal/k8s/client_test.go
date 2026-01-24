@@ -29,12 +29,12 @@ func testKubeconfig(t *testing.T, content string) string {
 }
 
 // validKubeconfig returns a minimal valid kubeconfig content.
-func validKubeconfig(server string) string {
+func validKubeconfig() string {
 	return `apiVersion: v1
 kind: Config
 clusters:
 - cluster:
-    server: ` + server + `
+    server: https://127.0.0.1:6443
     insecure-skip-tls-verify: true
   name: test-cluster
 contexts:
@@ -57,7 +57,7 @@ users:
 }
 
 func TestNewClient_WithKubeconfig(t *testing.T) {
-	kubeconfigPath := testKubeconfig(t, validKubeconfig("https://127.0.0.1:6443"))
+	kubeconfigPath := testKubeconfig(t, validKubeconfig())
 
 	client, err := NewClient(WithKubeconfig(kubeconfigPath))
 	if err != nil {
@@ -82,7 +82,7 @@ func TestNewClient_WithKubeconfig(t *testing.T) {
 }
 
 func TestNewClient_WithContext(t *testing.T) {
-	kubeconfigPath := testKubeconfig(t, validKubeconfig("https://127.0.0.1:6443"))
+	kubeconfigPath := testKubeconfig(t, validKubeconfig())
 
 	client, err := NewClient(
 		WithKubeconfig(kubeconfigPath),
@@ -102,7 +102,7 @@ func TestNewClient_WithContext(t *testing.T) {
 }
 
 func TestNewClient_EnvironmentVariables(t *testing.T) {
-	kubeconfigPath := testKubeconfig(t, validKubeconfig("https://127.0.0.1:6443"))
+	kubeconfigPath := testKubeconfig(t, validKubeconfig())
 
 	// Set environment variables
 	t.Setenv("KUBECONFIG", kubeconfigPath)
@@ -123,7 +123,7 @@ func TestNewClient_EnvironmentVariables(t *testing.T) {
 }
 
 func TestNewClient_OptionsPrecedence(t *testing.T) {
-	kubeconfigPath := testKubeconfig(t, validKubeconfig("https://127.0.0.1:6443"))
+	kubeconfigPath := testKubeconfig(t, validKubeconfig())
 
 	// Set environment variables to wrong values
 	t.Setenv("KUBE_CONTEXT", "wrong-context")
@@ -159,7 +159,7 @@ func TestNewClient_MissingKubeconfig(t *testing.T) {
 }
 
 func TestNewClient_InvalidContext(t *testing.T) {
-	kubeconfigPath := testKubeconfig(t, validKubeconfig("https://127.0.0.1:6443"))
+	kubeconfigPath := testKubeconfig(t, validKubeconfig())
 
 	_, err := NewClient(
 		WithKubeconfig(kubeconfigPath),
