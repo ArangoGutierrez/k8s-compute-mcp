@@ -383,3 +383,99 @@ func TestHandleSubmitMPIJob(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleSubmitMonteCarlo verifies Monte Carlo job submission handler.
+func TestHandleSubmitMonteCarlo(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       SubmitMonteCarloInput
+		mockSetup   func(*mockK8sClient)
+		wantErr     bool
+		wantJobType string
+	}{
+		{
+			name: "successful submission",
+			input: SubmitMonteCarloInput{
+				Script:   "import random; print(random.random())",
+				Replicas: 10,
+			},
+			wantErr:     false,
+			wantJobType: "jobset",
+		},
+		{
+			name: "with namespace",
+			input: SubmitMonteCarloInput{
+				Script:    "print('monte carlo')",
+				Replicas:  5,
+				Namespace: "simulations",
+			},
+			wantErr:     false,
+			wantJobType: "jobset",
+		},
+		{
+			name: "high replica count",
+			input: SubmitMonteCarloInput{
+				Script:   "print('test')",
+				Replicas: 100,
+			},
+			wantErr:     false,
+			wantJobType: "jobset",
+		},
+		{
+			name: "empty script",
+			input: SubmitMonteCarloInput{
+				Script:   "",
+				Replicas: 10,
+			},
+			wantErr: true,
+		},
+		{
+			name: "zero replicas",
+			input: SubmitMonteCarloInput{
+				Script:   "print('test')",
+				Replicas: 0,
+			},
+			wantErr: true,
+		},
+		{
+			name: "k8s submission error",
+			input: SubmitMonteCarloInput{
+				Script:   "print('test')",
+				Replicas: 5,
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.submitJobSetErr = fmt.Errorf("quota exceeded")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMockK8sClient()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mock)
+			}
+
+			s := testServerWithMock(mock)
+			result, err := s.handleSubmitMonteCarlo(context.Background(), tt.input)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("handleSubmitMonteCarlo() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if result == nil {
+					t.Fatal("handleSubmitMonteCarlo() returned nil result")
+				}
+				if result.JobType != tt.wantJobType {
+					t.Errorf("JobType = %q, want %q", result.JobType, tt.wantJobType)
+				}
+				if !strings.HasPrefix(result.JobID, "mc-") {
+					t.Errorf("JobID = %q, want prefix 'mc-'", result.JobID)
+				}
+			}
+		})
+	}
+}
