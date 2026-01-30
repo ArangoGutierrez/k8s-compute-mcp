@@ -710,3 +710,114 @@ func TestHandleCheckStatus(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleReadArtifactHead verifies artifact reading handler.
+func TestHandleReadArtifactHead(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       ReadArtifactInput
+		mockSetup   func(*mockK8sClient)
+		wantErr     bool
+		wantContent string
+		wantLines   int
+	}{
+		{
+			name: "successful read",
+			input: ReadArtifactInput{
+				Path:  "/mnt/data/results/output.json",
+				Lines: 10,
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.readArtifactResult = &k8s.ReadArtifactResult{
+					Content: `{"result": 3.14159}`,
+					Lines:   1,
+				}
+			},
+			wantErr:     false,
+			wantContent: `{"result": 3.14159}`,
+			wantLines:   1,
+		},
+		{
+			name: "default lines",
+			input: ReadArtifactInput{
+				Path:  "/mnt/data/output.txt",
+				Lines: 0, // Should default to 100
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.readArtifactResult = &k8s.ReadArtifactResult{
+					Content: "line1\nline2\nline3",
+					Lines:   3,
+				}
+			},
+			wantErr:   false,
+			wantLines: 3,
+		},
+		{
+			name: "empty path",
+			input: ReadArtifactInput{
+				Path:  "",
+				Lines: 10,
+			},
+			wantErr: true,
+		},
+		{
+			name: "path outside mount",
+			input: ReadArtifactInput{
+				Path:  "/etc/passwd",
+				Lines: 10,
+			},
+			wantErr: true,
+		},
+		{
+			name: "path traversal",
+			input: ReadArtifactInput{
+				Path:  "/mnt/data/../../../etc/shadow",
+				Lines: 10,
+			},
+			wantErr: true,
+		},
+		{
+			name: "file not found",
+			input: ReadArtifactInput{
+				Path:  "/mnt/data/nonexistent.txt",
+				Lines: 10,
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.readArtifactErr = fmt.Errorf("file not found")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMockK8sClient()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mock)
+			}
+
+			s := testServerWithMock(mock)
+			result, err := s.handleReadArtifactHead(context.Background(), tt.input)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("handleReadArtifactHead() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if result == nil {
+					t.Fatal("handleReadArtifactHead() returned nil result")
+				}
+				if tt.wantContent != "" && result.Content != tt.wantContent {
+					t.Errorf("Content = %q, want %q", result.Content, tt.wantContent)
+				}
+				if tt.wantLines > 0 && result.Lines != tt.wantLines {
+					t.Errorf("Lines = %d, want %d", result.Lines, tt.wantLines)
+				}
+				if result.Path != tt.input.Path {
+					t.Errorf("Path = %q, want %q", result.Path, tt.input.Path)
+				}
+			}
+		})
+	}
+}
