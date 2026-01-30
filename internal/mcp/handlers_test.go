@@ -479,3 +479,94 @@ func TestHandleSubmitMonteCarlo(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleSubmitReducer verifies reducer job submission handler.
+func TestHandleSubmitReducer(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       SubmitReducerInput
+		mockSetup   func(*mockK8sClient)
+		wantErr     bool
+		wantJobType string
+	}{
+		{
+			name: "successful submission",
+			input: SubmitReducerInput{
+				Script: "import glob; files = glob.glob('/mnt/data/*.json')",
+			},
+			wantErr:     false,
+			wantJobType: "job",
+		},
+		{
+			name: "with input pattern",
+			input: SubmitReducerInput{
+				Script:       "print('aggregating')",
+				InputPattern: "/mnt/data/results/*.json",
+			},
+			wantErr:     false,
+			wantJobType: "job",
+		},
+		{
+			name: "with namespace",
+			input: SubmitReducerInput{
+				Script:    "print('reduce')",
+				Namespace: "analytics",
+			},
+			wantErr:     false,
+			wantJobType: "job",
+		},
+		{
+			name: "empty script",
+			input: SubmitReducerInput{
+				Script: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "whitespace script",
+			input: SubmitReducerInput{
+				Script: "   \n\t",
+			},
+			wantErr: true,
+		},
+		{
+			name: "k8s submission error",
+			input: SubmitReducerInput{
+				Script: "print('test')",
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.submitJobErr = fmt.Errorf("namespace not found")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMockK8sClient()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mock)
+			}
+
+			s := testServerWithMock(mock)
+			result, err := s.handleSubmitReducer(context.Background(), tt.input)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("handleSubmitReducer() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if result == nil {
+					t.Fatal("handleSubmitReducer() returned nil result")
+				}
+				if result.JobType != tt.wantJobType {
+					t.Errorf("JobType = %q, want %q", result.JobType, tt.wantJobType)
+				}
+				if !strings.HasPrefix(result.JobID, "reduce-") {
+					t.Errorf("JobID = %q, want prefix 'reduce-'", result.JobID)
+				}
+			}
+		})
+	}
+}
