@@ -121,6 +121,20 @@ func newMockK8sClient() *mockK8sClient {
 	}
 }
 
+// testServerWithMock creates a Server with the provided mock K8s client.
+func testServerWithMock(mock *mockK8sClient) *Server {
+	return &Server{
+		mcpServer: nil, // Not needed for handler tests
+		k8sClient: mock,
+		config: ServerConfig{
+			PVCName:      "test-pvc",
+			PVCMountPath: "/mnt/data",
+			KueueQueue:   "test-queue",
+			DefaultImage: "python:3.11-slim",
+		},
+	}
+}
+
 // TestGenerateJobName verifies job name generation with unique timestamps.
 func TestGenerateJobName(t *testing.T) {
 	tests := []struct {
