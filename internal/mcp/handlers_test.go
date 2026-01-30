@@ -570,3 +570,143 @@ func TestHandleSubmitReducer(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleCheckStatus verifies job status check handler.
+func TestHandleCheckStatus(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     CheckStatusInput
+		mockSetup func(*mockK8sClient)
+		wantErr   bool
+		wantPhase string
+	}{
+		{
+			name: "mpijob running",
+			input: CheckStatusInput{
+				JobID:   "mpi-test-123",
+				JobType: "mpijob",
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.getMPIJobStatus = "Running"
+			},
+			wantErr:   false,
+			wantPhase: "Running",
+		},
+		{
+			name: "jobset succeeded",
+			input: CheckStatusInput{
+				JobID:   "mc-test-456",
+				JobType: "jobset",
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.getJobSetStatus = "Succeeded"
+			},
+			wantErr:   false,
+			wantPhase: "Succeeded",
+		},
+		{
+			name: "batch job with counts",
+			input: CheckStatusInput{
+				JobID:   "reduce-789",
+				JobType: "job",
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.getJobStatus = &batchv1.JobStatus{
+					Active:    0,
+					Succeeded: 1,
+					Failed:    0,
+				}
+			},
+			wantErr:   false,
+			wantPhase: "Succeeded",
+		},
+		{
+			name: "batch job failed",
+			input: CheckStatusInput{
+				JobID:   "reduce-failed",
+				JobType: "job",
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.getJobStatus = &batchv1.JobStatus{
+					Active:    0,
+					Succeeded: 0,
+					Failed:    1,
+				}
+			},
+			wantErr:   false,
+			wantPhase: "Failed",
+		},
+		{
+			name: "batch job pending",
+			input: CheckStatusInput{
+				JobID:   "reduce-pending",
+				JobType: "job",
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.getJobStatus = &batchv1.JobStatus{
+					Active:    0,
+					Succeeded: 0,
+					Failed:    0,
+				}
+			},
+			wantErr:   false,
+			wantPhase: "Pending",
+		},
+		{
+			name: "empty job_id",
+			input: CheckStatusInput{
+				JobID:   "",
+				JobType: "mpijob",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid job_type",
+			input: CheckStatusInput{
+				JobID:   "test-123",
+				JobType: "invalid",
+			},
+			wantErr: true,
+		},
+		{
+			name: "mpijob not found",
+			input: CheckStatusInput{
+				JobID:   "nonexistent",
+				JobType: "mpijob",
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.getMPIJobStatusErr = fmt.Errorf("mpijob not found")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMockK8sClient()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mock)
+			}
+
+			s := testServerWithMock(mock)
+			result, err := s.handleCheckStatus(context.Background(), tt.input)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("handleCheckStatus() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if result == nil {
+					t.Fatal("handleCheckStatus() returned nil result")
+				}
+				if result.Phase != tt.wantPhase {
+					t.Errorf("Phase = %q, want %q", result.Phase, tt.wantPhase)
+				}
+				if result.JobID != tt.input.JobID {
+					t.Errorf("JobID = %q, want %q", result.JobID, tt.input.JobID)
+				}
+			}
+		})
+	}
+}
