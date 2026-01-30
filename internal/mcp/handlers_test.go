@@ -11,43 +11,9 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
-	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
 )
-
-// testServer creates a Server with mock K8s clients for testing handlers.
-// This allows testing handler logic without a real K8s cluster.
-// Deprecated: Use testServerWithMock instead.
-func testServer(t *testing.T, objects ...runtime.Object) *Server {
-	t.Helper()
-
-	// Create fake clientset with any pre-existing objects
-	//nolint:staticcheck // SA1019: NewSimpleClientset is deprecated but works for tests
-	fakeClientset := kubefake.NewSimpleClientset(objects...)
-
-	// Create fake dynamic client with CRD scheme
-	scheme := runtime.NewScheme()
-	fakeDynamic := dynamicfake.NewSimpleDynamicClient(scheme)
-
-	// Suppress unused variable warnings - these were used before mock client
-	_ = fakeClientset
-	_ = fakeDynamic
-
-	// Build server with test config using mock client
-	return &Server{
-		mcpServer: nil, // Not needed for handler tests
-		k8sClient: newMockK8sClient(),
-		config: ServerConfig{
-			PVCName:      "test-pvc",
-			PVCMountPath: "/mnt/data",
-			KueueQueue:   "test-queue",
-			DefaultImage: "python:3.11-slim",
-		},
-	}
-}
 
 // mockK8sClient is a mock implementation of k8s.K8sClientInterface for testing.
 type mockK8sClient struct {
