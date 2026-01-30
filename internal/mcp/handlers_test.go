@@ -5,6 +5,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -274,6 +275,110 @@ func TestValidateArtifactPath(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateArtifactPath(%q, %q) error = %v, wantErr %v",
 					tt.path, tt.mountPath, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestHandleSubmitMPIJob verifies MPI job submission handler.
+func TestHandleSubmitMPIJob(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       SubmitMPIJobInput
+		mockSetup   func(*mockK8sClient)
+		wantErr     bool
+		wantJobType string
+	}{
+		{
+			name: "successful submission",
+			input: SubmitMPIJobInput{
+				Code:     "print('hello mpi')",
+				Language: "python",
+				Nodes:    4,
+			},
+			wantErr:     false,
+			wantJobType: "mpijob",
+		},
+		{
+			name: "with namespace",
+			input: SubmitMPIJobInput{
+				Code:      "print('hello')",
+				Language:  "python",
+				Nodes:     2,
+				Namespace: "custom-ns",
+			},
+			wantErr:     false,
+			wantJobType: "mpijob",
+		},
+		{
+			name: "empty code",
+			input: SubmitMPIJobInput{
+				Code:     "",
+				Language: "python",
+				Nodes:    2,
+			},
+			wantErr: true,
+		},
+		{
+			name: "zero nodes",
+			input: SubmitMPIJobInput{
+				Code:     "print('test')",
+				Language: "python",
+				Nodes:    0,
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative nodes",
+			input: SubmitMPIJobInput{
+				Code:     "print('test')",
+				Language: "python",
+				Nodes:    -1,
+			},
+			wantErr: true,
+		},
+		{
+			name: "k8s submission error",
+			input: SubmitMPIJobInput{
+				Code:     "print('test')",
+				Language: "python",
+				Nodes:    2,
+			},
+			mockSetup: func(m *mockK8sClient) {
+				m.submitMPIJobErr = fmt.Errorf("cluster unavailable")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMockK8sClient()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mock)
+			}
+
+			s := testServerWithMock(mock)
+			result, err := s.handleSubmitMPIJob(context.Background(), tt.input)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("handleSubmitMPIJob() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if result == nil {
+					t.Fatal("handleSubmitMPIJob() returned nil result")
+				}
+				if result.JobType != tt.wantJobType {
+					t.Errorf("JobType = %q, want %q", result.JobType, tt.wantJobType)
+				}
+				if result.JobID == "" {
+					t.Error("JobID should not be empty")
+				}
+				if !strings.HasPrefix(result.JobID, "mpi-") {
+					t.Errorf("JobID = %q, want prefix 'mpi-'", result.JobID)
+				}
 			}
 		})
 	}
