@@ -310,7 +310,7 @@ cat examples/submit_mpi.json | ./bin/server
 - **Manifest Builders**: `internal/k8s/{mpijob,jobset,job,reader}.go`
 - **MCP Server**: `internal/mcp/server.go` - 5 tools registered with type-safe schemas
 - **Handlers**: `internal/mcp/handlers.go` - Non-blocking submissions, status queries
-- **Test Coverage**: 43.6% (manifest builders and reader well-tested)
+- **Test Coverage**: >64% (handlers at 84.8%, manifest builders well-tested)
 
 ### Open Issues Summary (Phase 3 + Enhancements)
 | Issue | Title | Priority |

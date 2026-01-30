@@ -60,7 +60,7 @@ func getEnvOrDefault(key, defaultValue string) string {
 // Server represents the MCP server instance.
 type Server struct {
 	mcpServer *server.MCPServer
-	k8sClient *k8s.Client
+	k8sClient k8s.K8sClientInterface // Interface enables dependency injection for testing
 	config    ServerConfig
 }
 

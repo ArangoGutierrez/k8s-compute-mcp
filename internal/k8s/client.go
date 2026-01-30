@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 
+	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -172,3 +174,20 @@ func (c *Client) Ping(ctx context.Context) error {
 	}
 	return nil
 }
+
+// K8sClientInterface defines the methods used by MCP handlers.
+// This interface enables mocking for unit tests.
+type K8sClientInterface interface {
+	Namespace() string
+	Context() string
+	SubmitMPIJob(ctx context.Context, mpijob *unstructured.Unstructured) error
+	SubmitJobSet(ctx context.Context, jobset *unstructured.Unstructured) error
+	SubmitJob(ctx context.Context, job *batchv1.Job) error
+	GetMPIJobStatus(ctx context.Context, namespace, name string) (string, error)
+	GetJobSetStatus(ctx context.Context, namespace, name string) (string, error)
+	GetJobStatus(ctx context.Context, namespace, name string) (*batchv1.JobStatus, error)
+	ReadArtifactHead(ctx context.Context, cfg ReadArtifactConfig) (*ReadArtifactResult, error)
+}
+
+// Ensure Client implements K8sClientInterface
+var _ K8sClientInterface = (*Client)(nil)
