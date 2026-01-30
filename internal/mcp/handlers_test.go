@@ -821,3 +821,46 @@ func TestHandleReadArtifactHead(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveNamespace verifies namespace resolution logic.
+func TestResolveNamespace(t *testing.T) {
+	tests := []struct {
+		name          string
+		inputNS       string
+		clientNS      string
+		wantNamespace string
+	}{
+		{
+			name:          "use provided namespace",
+			inputNS:       "custom-ns",
+			clientNS:      "default",
+			wantNamespace: "custom-ns",
+		},
+		{
+			name:          "fallback to client namespace",
+			inputNS:       "",
+			clientNS:      "client-default",
+			wantNamespace: "client-default",
+		},
+		{
+			name:          "provided takes precedence",
+			inputNS:       "override",
+			clientNS:      "ignored",
+			wantNamespace: "override",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMockK8sClient()
+			mock.namespace = tt.clientNS
+
+			s := testServerWithMock(mock)
+			got := s.resolveNamespace(tt.inputNS)
+
+			if got != tt.wantNamespace {
+				t.Errorf("resolveNamespace(%q) = %q, want %q", tt.inputNS, got, tt.wantNamespace)
+			}
+		})
+	}
+}
