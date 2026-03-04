@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -181,19 +182,25 @@ func (s *Server) registerTools() {
 // newToolHandler creates a type-safe MCP tool handler wrapper.
 // This is a generic function that bridges typed handler signatures with mcp-go.
 // The toolName parameter enables Prometheus metrics instrumentation at the dispatch level.
+// Metrics are recorded BEFORE the error-to-result conversion so handler errors
+// are correctly counted as errors, not successes.
 func newToolHandler[T any, R any](
 	toolName string,
 	handler func(context.Context, T) (*R, error),
 ) server.ToolHandlerFunc {
 	return mcp.NewTypedToolHandler(
 		func(ctx context.Context, req mcp.CallToolRequest, args T) (*mcp.CallToolResult, error) {
-			return InstrumentToolCall(toolName, func() (*mcp.CallToolResult, error) {
-				result, err := handler(ctx, args)
-				if err != nil {
-					return mcp.NewToolResultError(err.Error()), nil
-				}
-				return mcp.NewToolResultStructured(result, ""), nil
-			})
+			start := time.Now()
+			result, err := handler(ctx, args)
+			duration := time.Since(start).Seconds()
+			ToolDurationSeconds.WithLabelValues(toolName).Observe(duration)
+			if err != nil {
+				ToolRequestsTotal.WithLabelValues(toolName, "error").Inc()
+				ToolErrorsTotal.WithLabelValues(toolName, "handler_error").Inc()
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			ToolRequestsTotal.WithLabelValues(toolName, "success").Inc()
+			return mcp.NewToolResultStructured(result, ""), nil
 		},
 	)
 }
