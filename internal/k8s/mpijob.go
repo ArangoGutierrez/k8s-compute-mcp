@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 // MPIJobGVR is the GroupVersionResource for Kubeflow MPIJob.
@@ -181,14 +182,13 @@ func buildMPICommand(cfg MPIJobConfig) ([]string, []string) {
 			"python", "-c", cfg.Code,
 		}
 	case "cpp", "c++":
-		// For C++: Write code to file, compile with mpicxx, run with mpirun
-		// This uses a shell wrapper to handle compilation
-		script := fmt.Sprintf(`
-set -e
-echo '%s' > /tmp/mpi_code.cpp
-mpicxx -o /tmp/mpi_program /tmp/mpi_code.cpp
-mpirun --allow-run-as-root -np %d /tmp/mpi_program
-`, escapeShellString(cfg.Code), cfg.Replicas)
+		// For C++: Write code to file using heredoc, compile with mpicxx, run with mpirun.
+		// Single-quoted heredoc delimiter prevents ALL shell expansion,
+		// making this safe against shell injection regardless of code content.
+		// Generate a unique delimiter that doesn't appear on its own line in the code.
+		delimiter := uniqueHeredocDelimiter(cfg.Code)
+		script := fmt.Sprintf("set -e\ncat <<'%s' > /tmp/mpi_code.cpp\n%s\n%s\nmpicxx -o /tmp/mpi_program /tmp/mpi_code.cpp\nmpirun --allow-run-as-root -np %d /tmp/mpi_program\n",
+			delimiter, cfg.Code, delimiter, cfg.Replicas)
 		return []string{"/bin/sh"}, []string{"-c", script}
 	default:
 		// Default to Python
@@ -200,10 +200,18 @@ mpirun --allow-run-as-root -np %d /tmp/mpi_program
 	}
 }
 
-// escapeShellString escapes single quotes in a string for shell embedding.
-func escapeShellString(s string) string {
-	// Replace single quotes with '\'' (end quote, escaped quote, start quote)
-	return strings.ReplaceAll(s, "'", "'\"'\"'")
+// uniqueHeredocDelimiter returns a heredoc delimiter that does not appear
+// on its own line in the given code. This prevents early heredoc termination
+// if user code contains the delimiter string.
+func uniqueHeredocDelimiter(code string) string {
+	delimiter := "CPPEOF"
+	for code == delimiter ||
+		strings.HasPrefix(code, delimiter+"\n") ||
+		strings.HasSuffix(code, "\n"+delimiter) ||
+		strings.Contains(code, "\n"+delimiter+"\n") {
+		delimiter = fmt.Sprintf("CPPEOF_%s", rand.String(8))
+	}
+	return delimiter
 }
 
 // buildMPIContainer creates a container spec for MPIJob.
