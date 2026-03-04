@@ -28,6 +28,9 @@ rbac:
   # When true, creates cluster-wide ClusterRole and ClusterRoleBinding.
   clusterWide: false
 
+# Disable SA token mount by default (app uses kubeconfig, not in-cluster auth)
+automountServiceAccountToken: false
+
 # Pod-level security context (applied to the pod spec)
 # UID 65532 matches the distroless nonroot image
 podSecurityContext:
