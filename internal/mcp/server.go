@@ -211,7 +211,7 @@ func (s *Server) Run(ctx context.Context) error {
 		log.Printf("Context canceled, shutting down MCP server")
 		// Close stdin to unblock ServeStdio, which reads from os.Stdin.
 		// Without this, the goroutine leaks forever blocked on stdin read.
-		os.Stdin.Close()
+		_ = os.Stdin.Close()
 		// Wait for the goroutine to finish to prevent leak
 		<-errChan
 		return ctx.Err()
