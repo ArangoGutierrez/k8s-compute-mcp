@@ -370,17 +370,22 @@ func validateArtifactPath(path, mountPath string) error {
 		return fmt.Errorf("path is required")
 	}
 
+	if mountPath == "" {
+		return fmt.Errorf("mount path is not configured")
+	}
+
 	// Validate path contains only safe characters
 	if !safePathRegexp.MatchString(path) {
 		return fmt.Errorf("path contains invalid characters: %s", path)
 	}
 
-	// Clean the path to resolve any traversal sequences
+	// Clean both paths to normalize trailing slashes, double slashes, etc.
 	cleaned := filepath.Clean(path)
+	cleanMount := filepath.Clean(mountPath)
 
 	// Path must be within the mount path (with trailing slash to prevent prefix attacks)
-	if cleaned != mountPath && !strings.HasPrefix(cleaned, mountPath+"/") {
-		return fmt.Errorf("path must be within %s, got: %s", mountPath, path)
+	if cleaned != cleanMount && !strings.HasPrefix(cleaned, cleanMount+"/") {
+		return fmt.Errorf("path must be within %s, got: %s", cleanMount, path)
 	}
 
 	return nil

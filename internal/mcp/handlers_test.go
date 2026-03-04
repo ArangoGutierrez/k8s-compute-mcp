@@ -233,6 +233,24 @@ func TestValidateArtifactPath(t *testing.T) {
 			mountPath: "/mnt/data",
 			wantErr:   true,
 		},
+		{
+			name:      "empty mount path",
+			path:      "/mnt/data/results/output.json",
+			mountPath: "",
+			wantErr:   true,
+		},
+		{
+			name:      "mount path with trailing slash",
+			path:      "/mnt/data/results/output.json",
+			mountPath: "/mnt/data/",
+			wantErr:   false,
+		},
+		{
+			name:      "mount path exact match with trailing slash",
+			path:      "/mnt/data",
+			mountPath: "/mnt/data/",
+			wantErr:   false,
+		},
 	}
 
 	for _, tt := range tests {
