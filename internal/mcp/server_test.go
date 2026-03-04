@@ -295,7 +295,8 @@ func TestServerRun_ContextCancellation(t *testing.T) {
 	os.Stdin = pr
 	t.Cleanup(func() {
 		os.Stdin = origStdin
-		pw.Close()
+		_ = pr.Close()
+		_ = pw.Close()
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -318,7 +319,7 @@ func TestServerRun_ContextCancellation(t *testing.T) {
 	select {
 	case runErr := <-runDone:
 		if runErr != context.Canceled {
-			t.Logf("Server.Run returned: %v (expected context.Canceled)", runErr)
+			t.Fatalf("Server.Run returned: %v (expected context.Canceled)", runErr)
 		}
 
 		// Verify stdin was closed by the Run method (the pipe read end).
