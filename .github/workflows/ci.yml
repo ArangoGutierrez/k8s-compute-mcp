@@ -61,7 +61,7 @@ jobs:
         run: make coverage
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.out
@@ -97,7 +97,7 @@ jobs:
           make cmd-server PREFIX=./dist/${{ matrix.goos }}-${{ matrix.goarch }}
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: server-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ./dist/${{ matrix.goos }}-${{ matrix.goarch }}/server
