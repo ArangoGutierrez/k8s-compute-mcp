@@ -14,11 +14,11 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"k8s.io/klog/v2"
 
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/info"
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
@@ -107,8 +107,10 @@ func NewServer() (*Server, error) {
 	// Register tools
 	s.registerTools()
 
-	log.Printf("Server config: PVC=%s, MountPath=%s, KueueQueue=%s",
-		config.PVCName, config.PVCMountPath, config.KueueQueue)
+	klog.InfoS("Server configuration",
+		"pvc", config.PVCName,
+		"mountPath", config.PVCMountPath,
+		"kueueQueue", config.KueueQueue)
 
 	return s, nil
 }
@@ -172,7 +174,7 @@ func (s *Server) registerTools() {
 	)
 	s.mcpServer.AddTool(readArtifactTool, newToolHandler(s.handleReadArtifactHead))
 
-	log.Printf("Registered %d MCP tools", 5)
+	klog.InfoS("Registered MCP tools", "count", 5)
 }
 
 // newToolHandler creates a type-safe MCP tool handler wrapper.
@@ -194,8 +196,10 @@ func newToolHandler[T any, R any](
 // Run starts the MCP server with stdio transport.
 // It blocks until the context is canceled or an error occurs.
 func (s *Server) Run(ctx context.Context) error {
-	log.Printf("MCP server %s ready, context: %s, namespace: %s",
-		info.Version, s.k8sClient.Context(), s.k8sClient.Namespace())
+	klog.InfoS("MCP server ready",
+		"version", info.Version,
+		"context", s.k8sClient.Context(),
+		"namespace", s.k8sClient.Namespace())
 
 	// Start stdio transport - this blocks until completion
 	// Note: ServeStdio doesn't accept context, so we use a goroutine pattern
@@ -208,11 +212,11 @@ func (s *Server) Run(ctx context.Context) error {
 	// Wait for either context cancellation or server error
 	select {
 	case <-ctx.Done():
-		log.Printf("Context canceled, shutting down MCP server")
+		klog.InfoS("Context canceled, shutting down MCP server")
 		// Close stdin to unblock ServeStdio, which reads from os.Stdin.
 		// Without this, the goroutine leaks forever blocked on stdin read.
 		if err := os.Stdin.Close(); err != nil {
-			log.Printf("Warning: failed to close stdin: %v", err)
+			klog.ErrorS(err, "Failed to close stdin")
 		}
 		// Wait for the goroutine to finish to prevent leak
 		<-errChan

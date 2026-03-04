@@ -13,21 +13,31 @@ package main
 
 import (
 	"context"
-	"log"
+	"flag"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"k8s.io/klog/v2"
 
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/info"
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/mcp"
 )
 
 func main() {
-	// Configure logging to stderr to avoid interfering with MCP protocol on stdout
-	log.SetOutput(os.Stderr)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	// Initialize klog flags and configure output to stderr
+	// to avoid interfering with MCP protocol on stdout
+	klog.InitFlags(nil)
+	if err := flag.Set("logtostderr", "true"); err != nil {
+		klog.ErrorS(err, "Failed to set logtostderr flag")
+	}
+	flag.Parse()
+	defer klog.Flush()
 
-	log.Printf("Starting %s %s (commit: %s)", info.Name, info.Version, info.GitCommit)
+	klog.InfoS("Starting server",
+		"name", info.Name,
+		"version", info.Version,
+		"commit", info.GitCommit)
 
 	// Create context with signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -39,21 +49,23 @@ func main() {
 
 	go func() {
 		sig := <-sigChan
-		log.Printf("Received signal %v, initiating graceful shutdown", sig)
+		klog.InfoS("Received shutdown signal", "signal", sig.String())
 		cancel()
 	}()
 
 	// Create and run the MCP server
 	server, err := mcp.NewServer()
 	if err != nil {
-		log.Fatalf("Failed to create MCP server: %v", err)
+		klog.ErrorS(err, "Failed to create MCP server")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
-	log.Printf("MCP server initialized, starting stdio transport")
+	klog.InfoS("MCP server initialized, starting stdio transport")
 
 	if err := server.Run(ctx); err != nil && err != context.Canceled {
-		log.Fatalf("MCP server error: %v", err)
+		klog.ErrorS(err, "MCP server error")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
-	log.Printf("MCP server shutdown complete")
+	klog.InfoS("MCP server shutdown complete")
 }
