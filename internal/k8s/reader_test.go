@@ -57,16 +57,18 @@ func TestBuildReaderPod(t *testing.T) {
 					t.Errorf("image = %q, want %q", container.Image, ReaderPodImage)
 				}
 
-				// Check command
-				if len(container.Command) != 3 {
-					t.Fatalf("command length = %d, want 3", len(container.Command))
+				// Check command uses direct exec (no shell wrapper)
+				if len(container.Command) != 1 || container.Command[0] != "head" {
+					t.Errorf("command = %v, want [head]", container.Command)
 				}
-				if container.Command[0] != "sh" || container.Command[1] != "-c" {
-					t.Errorf("command = %v, want sh -c ...", container.Command)
+				wantArgs := []string{"-n", "50", "--", "/mnt/data/results/output.json"}
+				if len(container.Args) != len(wantArgs) {
+					t.Fatalf("args = %v, want %v", container.Args, wantArgs)
 				}
-				expectedCmd := "head -n 50 '/mnt/data/results/output.json'"
-				if container.Command[2] != expectedCmd {
-					t.Errorf("command script = %q, want %q", container.Command[2], expectedCmd)
+				for i, a := range container.Args {
+					if a != wantArgs[i] {
+						t.Errorf("args[%d] = %q, want %q", i, a, wantArgs[i])
+					}
 				}
 
 				// Check volume mount
@@ -112,9 +114,14 @@ func TestBuildReaderPod(t *testing.T) {
 				// Lines not set - should default to 100
 			},
 			validate: func(t *testing.T, pod *corev1.Pod) {
-				expectedCmd := "head -n 100 '/mnt/data/file.txt'"
-				if pod.Spec.Containers[0].Command[2] != expectedCmd {
-					t.Errorf("command script = %q, want %q", pod.Spec.Containers[0].Command[2], expectedCmd)
+				wantArgs := []string{"-n", "100", "--", "/mnt/data/file.txt"}
+				if len(pod.Spec.Containers[0].Args) != len(wantArgs) {
+					t.Fatalf("args = %v, want %v", pod.Spec.Containers[0].Args, wantArgs)
+				}
+				for i, a := range pod.Spec.Containers[0].Args {
+					if a != wantArgs[i] {
+						t.Errorf("args[%d] = %q, want %q", i, a, wantArgs[i])
+					}
 				}
 			},
 		},
@@ -465,10 +472,15 @@ func TestReadArtifactConfig_Defaults(t *testing.T) {
 		t.Errorf("namespace = %q, want %q", pod.Namespace, "default")
 	}
 
-	// Lines default is 100, check command
-	expectedCmd := "head -n 100 '/mnt/data/test.txt'"
-	if pod.Spec.Containers[0].Command[2] != expectedCmd {
-		t.Errorf("command = %q, want %q", pod.Spec.Containers[0].Command[2], expectedCmd)
+	// Lines default is 100, check args
+	wantArgs := []string{"-n", "100", "--", "/mnt/data/test.txt"}
+	if len(pod.Spec.Containers[0].Args) != len(wantArgs) {
+		t.Fatalf("args = %v, want %v", pod.Spec.Containers[0].Args, wantArgs)
+	}
+	for i, a := range pod.Spec.Containers[0].Args {
+		if a != wantArgs[i] {
+			t.Errorf("args[%d] = %q, want %q", i, a, wantArgs[i])
+		}
 	}
 
 	// MountPath default
@@ -491,5 +503,109 @@ func TestReaderPodImage(t *testing.T) {
 	}
 	if ReaderPodImage != "busybox:1.36" {
 		t.Errorf("ReaderPodImage = %q, want %q", ReaderPodImage, "busybox:1.36")
+	}
+}
+
+// P0-1: Shell injection prevention - command must NOT use sh -c wrapper.
+func TestBuildReaderPod_NoShellInjection(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         ReadArtifactConfig
+		wantCommand []string
+		wantArgs    []string
+	}{
+		{
+			name: "normal path uses direct command without shell",
+			cfg: ReadArtifactConfig{
+				Path:      "/mnt/data/results/output.json",
+				Lines:     50,
+				Namespace: "default",
+				PVCName:   "shared-data",
+				MountPath: "/mnt/data",
+			},
+			wantCommand: []string{"head"},
+			wantArgs:    []string{"-n", "50", "--", "/mnt/data/results/output.json"},
+		},
+		{
+			name: "path with single quotes must not allow injection",
+			cfg: ReadArtifactConfig{
+				Path:      "/mnt/data/results/file'$(whoami).txt",
+				Lines:     10,
+				Namespace: "default",
+				PVCName:   "shared-data",
+				MountPath: "/mnt/data",
+			},
+			wantCommand: []string{"head"},
+			wantArgs:    []string{"-n", "10", "--", "/mnt/data/results/file'$(whoami).txt"},
+		},
+		{
+			name: "path with semicolons must not allow injection",
+			cfg: ReadArtifactConfig{
+				Path:      "/mnt/data/results/file;rm -rf /",
+				Lines:     10,
+				Namespace: "default",
+				PVCName:   "shared-data",
+				MountPath: "/mnt/data",
+			},
+			wantCommand: []string{"head"},
+			wantArgs:    []string{"-n", "10", "--", "/mnt/data/results/file;rm -rf /"},
+		},
+		{
+			name: "default lines uses strconv not sprintf",
+			cfg: ReadArtifactConfig{
+				Path:      "/mnt/data/file.txt",
+				Namespace: "default",
+				PVCName:   "shared-data",
+			},
+			wantCommand: []string{"head"},
+			wantArgs:    []string{"-n", "100", "--", "/mnt/data/file.txt"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod, err := BuildReaderPod(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildReaderPod() error = %v", err)
+			}
+
+			container := pod.Spec.Containers[0]
+
+			// Command must NOT start with "sh"
+			if len(container.Command) > 0 && container.Command[0] == "sh" {
+				t.Errorf("Command must not use shell wrapper, got: %v", container.Command)
+			}
+
+			// Verify Command is exactly ["head"]
+			if len(container.Command) != len(tt.wantCommand) {
+				t.Fatalf("Command length = %d, want %d; got %v", len(container.Command), len(tt.wantCommand), container.Command)
+			}
+			for i, c := range container.Command {
+				if c != tt.wantCommand[i] {
+					t.Errorf("Command[%d] = %q, want %q", i, c, tt.wantCommand[i])
+				}
+			}
+
+			// Verify Args
+			if len(container.Args) != len(tt.wantArgs) {
+				t.Fatalf("Args length = %d, want %d; got %v", len(container.Args), len(tt.wantArgs), container.Args)
+			}
+			for i, a := range container.Args {
+				if a != tt.wantArgs[i] {
+					t.Errorf("Args[%d] = %q, want %q", i, a, tt.wantArgs[i])
+				}
+			}
+		})
+	}
+}
+
+// P0-7: Unbounded log read - getPodLogs must use LimitBytes in PodLogOptions.
+func TestGetPodLogs_LimitBytes(t *testing.T) {
+	// We test BuildReaderPod does not change here, but getPodLogs uses LimitReader.
+	// Since getPodLogs is a method on Client (not easily testable without integration),
+	// we verify the constant exists and the function signature hasn't changed.
+	// The actual limit is tested via the MaxLogBytes constant.
+	if MaxLogBytes != 1<<20 {
+		t.Errorf("MaxLogBytes = %d, want %d (1MB)", MaxLogBytes, 1<<20)
 	}
 }

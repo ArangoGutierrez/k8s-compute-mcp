@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +29,9 @@ const (
 
 	// ReaderLabelValue is the label value for reader pods.
 	ReaderLabelValue = "ephemeral"
+
+	// MaxLogBytes is the maximum number of bytes to read from pod logs (1MB).
+	MaxLogBytes = int64(1 << 20)
 )
 
 // ReadArtifactConfig contains configuration for reading an artifact from PVC.
@@ -87,13 +91,6 @@ func BuildReaderPod(cfg ReadArtifactConfig) (*corev1.Pod, error) {
 
 	podName := buildReaderPodName()
 
-	// Command: read first N lines and output to stdout
-	// Using head -n which handles file not found gracefully
-	command := []string{
-		"sh", "-c",
-		fmt.Sprintf("head -n %d '%s'", cfg.Lines, cfg.Path),
-	}
-
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -112,7 +109,8 @@ func BuildReaderPod(cfg ReadArtifactConfig) (*corev1.Pod, error) {
 				{
 					Name:    "reader",
 					Image:   ReaderPodImage,
-					Command: command,
+					Command: []string{"head"},
+					Args:    []string{"-n", strconv.Itoa(cfg.Lines), "--", cfg.Path},
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "data",
@@ -235,9 +233,12 @@ func (c *Client) waitForPodCompletion(ctx context.Context, namespace, name strin
 }
 
 // getPodLogs retrieves the logs from a pod's main container.
+// Limits output to MaxLogBytes (1MB) to prevent memory exhaustion.
 func (c *Client) getPodLogs(ctx context.Context, namespace, name string) (string, error) {
+	limitBytes := MaxLogBytes
 	req := c.clientset.CoreV1().Pods(namespace).GetLogs(name, &corev1.PodLogOptions{
-		Container: "reader",
+		Container:  "reader",
+		LimitBytes: &limitBytes,
 	})
 
 	stream, err := req.Stream(ctx)
@@ -247,7 +248,7 @@ func (c *Client) getPodLogs(ctx context.Context, namespace, name string) (string
 	defer func() { _ = stream.Close() }()
 
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, stream); err != nil {
+	if _, err := io.Copy(&buf, io.LimitReader(stream, MaxLogBytes)); err != nil {
 		return "", fmt.Errorf("failed to read logs: %w", err)
 	}
 
