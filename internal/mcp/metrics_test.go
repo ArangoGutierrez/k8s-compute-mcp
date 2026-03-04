@@ -4,6 +4,7 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -158,6 +159,53 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(body, "mcp_active_jobs") {
 		t.Error("metrics endpoint missing mcp_active_jobs")
+	}
+}
+
+func TestNewToolHandler_ErrorMetrics(t *testing.T) {
+	_ = newTestRegistry()
+
+	type testInput struct {
+		Value string `json:"value"`
+	}
+	type testOutput struct {
+		Result string `json:"result"`
+	}
+
+	// Handler that always returns an error — simulates a real handler failure
+	handler := newToolHandler("failing_tool", func(ctx context.Context, input testInput) (*testOutput, error) {
+		return nil, fmt.Errorf("simulated k8s failure")
+	})
+	if handler == nil {
+		t.Fatal("newToolHandler returned nil")
+	}
+
+	// Invoke the handler through the mcp-go dispatch
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "failing_tool"
+	req.Params.Arguments = map[string]any{"value": "test"}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler returned raw error (should convert to tool result): %v", err)
+	}
+	if result == nil {
+		t.Fatal("handler returned nil result")
+	}
+
+	// The critical assertion: error counter MUST be incremented
+	errCount := testutil.ToFloat64(ToolErrorsTotal.WithLabelValues("failing_tool", "handler_error"))
+	if errCount != 1 {
+		t.Errorf("expected error counter = 1 for failing handler, got %f (errors counted as successes!)", errCount)
+	}
+
+	// Request counter should show error status, not success
+	successCount := testutil.ToFloat64(ToolRequestsTotal.WithLabelValues("failing_tool", "success"))
+	if successCount != 0 {
+		t.Errorf("expected success counter = 0 for failing handler, got %f", successCount)
+	}
+	errorCount := testutil.ToFloat64(ToolRequestsTotal.WithLabelValues("failing_tool", "error"))
+	if errorCount != 1 {
+		t.Errorf("expected error request counter = 1 for failing handler, got %f", errorCount)
 	}
 }
 
