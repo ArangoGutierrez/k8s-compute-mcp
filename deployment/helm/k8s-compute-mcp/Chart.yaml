@@ -1,0 +1,9 @@
+apiVersion: v2
+name: k8s-compute-mcp
+description: Kubernetes Computational Mathematics MCP Server
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: ArangoGutierrez
+    url: https://github.com/ArangoGutierrez
