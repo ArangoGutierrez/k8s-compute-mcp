@@ -4,6 +4,7 @@
 package k8s
 
 import (
+	"strings"
 	"testing"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -670,24 +671,79 @@ int main() { return 0; }
 }
 
 func TestBuildMPICommand_CppHeredocDelimiterCollision(t *testing.T) {
-	// If user code contains the heredoc delimiter, it must still work safely.
-	// The implementation should handle this edge case.
-	cfg := MPIJobConfig{
-		Name:     "test-delimiter",
-		Replicas: 2,
-		Code:     "// This line has CPPEOF in it\nint main() { return 0; }",
-		Language: "cpp",
+	tests := []struct {
+		name string
+		code string
+	}{
+		{
+			name: "CPPEOF as substring in comment",
+			code: "// This line has CPPEOF in it\nint main() { return 0; }",
+		},
+		{
+			name: "CPPEOF alone on its own line (attack vector)",
+			code: "int main() { return 0; }\nCPPEOF\nrm -rf / #",
+		},
+		{
+			name: "CPPEOF at start of code",
+			code: "CPPEOF\nint main() { return 0; }",
+		},
+		{
+			name: "CPPEOF at end of code",
+			code: "int main() { return 0; }\nCPPEOF",
+		},
+		{
+			name: "code is exactly CPPEOF",
+			code: "CPPEOF",
+		},
 	}
 
-	command, args := buildMPICommand(cfg)
-	if len(command) == 0 || command[0] != "/bin/sh" {
-		t.Fatalf("expected /bin/sh command, got %v", command)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := MPIJobConfig{
+				Name:     "test-delimiter",
+				Replicas: 2,
+				Code:     tt.code,
+				Language: "cpp",
+			}
 
-	script := args[1]
-	// The script must still use heredoc, and the code must appear verbatim
-	if !containsString(script, cfg.Code) {
-		t.Errorf("user code not found in script")
+			command, args := buildMPICommand(cfg)
+			if len(command) == 0 || command[0] != "/bin/sh" {
+				t.Fatalf("expected /bin/sh command, got %v", command)
+			}
+
+			script := args[1]
+
+			// The user code must appear verbatim in the script
+			if !containsString(script, tt.code) {
+				t.Errorf("user code not found verbatim in script.\nCode: %q\nScript:\n%s", tt.code, script)
+			}
+
+			// Extract the heredoc delimiter from the script.
+			// The script must use a delimiter that does NOT appear on its own line in the code.
+			// Pattern: cat <<'DELIMITER' > /tmp/mpi_code.cpp
+			delimStart := strings.Index(script, "<<'")
+			if delimStart == -1 {
+				t.Fatalf("no heredoc delimiter found in script:\n%s", script)
+			}
+			delimStart += 3 // skip <<"'"
+			delimEnd := strings.Index(script[delimStart:], "'")
+			if delimEnd == -1 {
+				t.Fatalf("unterminated heredoc delimiter in script:\n%s", script)
+			}
+			delimiter := script[delimStart : delimStart+delimEnd]
+
+			// The delimiter must NOT appear on its own line in the user code.
+			// Check: code starts with delimiter, ends with delimiter, or has \ndelimiter\n
+			codeHasDelimiterOnOwnLine := tt.code == delimiter ||
+				strings.HasPrefix(tt.code, delimiter+"\n") ||
+				strings.HasSuffix(tt.code, "\n"+delimiter) ||
+				strings.Contains(tt.code, "\n"+delimiter+"\n")
+
+			if codeHasDelimiterOnOwnLine {
+				t.Errorf("heredoc delimiter %q appears on its own line in user code — shell injection possible.\nCode: %q\nScript:\n%s",
+					delimiter, tt.code, script)
+			}
+		})
 	}
 }
 
