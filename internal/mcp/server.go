@@ -207,13 +207,23 @@ func newToolHandler[T any, R any](
 	)
 }
 
-// Run starts the MCP server with stdio transport.
+// Run starts the MCP server with stdio transport and the health HTTP server.
 // It blocks until the context is canceled or an error occurs.
 func (s *Server) Run(ctx context.Context) error {
 	klog.InfoS("MCP server ready",
 		"version", info.Version,
 		"context", s.k8sClient.Context(),
 		"namespace", s.k8sClient.Namespace())
+
+	// Start the health HTTP server in a goroutine before MCP stdio.
+	healthAddr := ":" + getEnvOrDefault("MCP_HEALTH_PORT", "8080")
+	healthServer := NewHealthServer(healthAddr, s.k8sClient)
+
+	go func() {
+		if err := healthServer.Start(ctx); err != nil {
+			log.Printf("Health server error (non-fatal): %v", err)
+		}
+	}()
 
 	// Start stdio transport - this blocks until completion
 	// Note: ServeStdio doesn't accept context, so we use a goroutine pattern

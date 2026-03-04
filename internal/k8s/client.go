@@ -180,6 +180,7 @@ func (c *Client) Ping(ctx context.Context) error {
 type K8sClientInterface interface {
 	Namespace() string
 	Context() string
+	Ping(ctx context.Context) error
 	SubmitMPIJob(ctx context.Context, mpijob *unstructured.Unstructured) error
 	SubmitJobSet(ctx context.Context, jobset *unstructured.Unstructured) error
 	SubmitJob(ctx context.Context, job *batchv1.Job) error

@@ -39,8 +39,9 @@ type mockK8sClient struct {
 	submittedJobs    []*batchv1.Job
 }
 
-func (m *mockK8sClient) Namespace() string { return m.namespace }
-func (m *mockK8sClient) Context() string   { return m.context }
+func (m *mockK8sClient) Namespace() string            { return m.namespace }
+func (m *mockK8sClient) Context() string               { return m.context }
+func (m *mockK8sClient) Ping(_ context.Context) error { return nil }
 
 func (m *mockK8sClient) SubmitMPIJob(ctx context.Context, mpijob *unstructured.Unstructured) error {
 	m.submittedMPIJobs = append(m.submittedMPIJobs, mpijob)
