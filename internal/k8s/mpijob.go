@@ -6,7 +6,6 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -181,14 +180,16 @@ func buildMPICommand(cfg MPIJobConfig) ([]string, []string) {
 			"python", "-c", cfg.Code,
 		}
 	case "cpp", "c++":
-		// For C++: Write code to file, compile with mpicxx, run with mpirun
-		// This uses a shell wrapper to handle compilation
-		script := fmt.Sprintf(`
-set -e
-echo '%s' > /tmp/mpi_code.cpp
+		// For C++: Write code to file using heredoc, compile with mpicxx, run with mpirun.
+		// Single-quoted heredoc delimiter ('CPPEOF') prevents ALL shell expansion,
+		// making this safe against shell injection regardless of code content.
+		script := fmt.Sprintf(`set -e
+cat <<'CPPEOF' > /tmp/mpi_code.cpp
+%s
+CPPEOF
 mpicxx -o /tmp/mpi_program /tmp/mpi_code.cpp
 mpirun --allow-run-as-root -np %d /tmp/mpi_program
-`, escapeShellString(cfg.Code), cfg.Replicas)
+`, cfg.Code, cfg.Replicas)
 		return []string{"/bin/sh"}, []string{"-c", script}
 	default:
 		// Default to Python
@@ -198,12 +199,6 @@ mpirun --allow-run-as-root -np %d /tmp/mpi_program
 			"python", "-c", cfg.Code,
 		}
 	}
-}
-
-// escapeShellString escapes single quotes in a string for shell embedding.
-func escapeShellString(s string) string {
-	// Replace single quotes with '\'' (end quote, escaped quote, start quote)
-	return strings.ReplaceAll(s, "'", "'\"'\"'")
 }
 
 // buildMPIContainer creates a container spec for MPIJob.

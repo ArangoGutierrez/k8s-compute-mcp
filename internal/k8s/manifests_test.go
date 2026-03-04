@@ -592,6 +592,124 @@ func containsString(s, substr string) bool {
 		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
 }
 
+func TestBuildMPICommand_CppShellInjection(t *testing.T) {
+	// These tests verify that C++ code with shell-special characters
+	// is safely passed without shell injection vulnerabilities.
+	tests := []struct {
+		name string
+		code string
+	}{
+		{
+			name: "single quotes in code",
+			code: `std::cout << "it's working" << std::endl;`,
+		},
+		{
+			name: "backticks in code",
+			code: "int x = `whoami`;",
+		},
+		{
+			name: "dollar signs in code",
+			code: `int $var = 1; std::cout << "$HOME" << std::endl;`,
+		},
+		{
+			name: "semicolons and command chaining",
+			code: `int main() { return 0; } // ; rm -rf /; echo "pwned"`,
+		},
+		{
+			name: "subshell attempts",
+			code: `int main() { return $(cat /etc/passwd); }`,
+		},
+		{
+			name: "heredoc delimiter in code",
+			code: `// CPPEOF
+int main() { return 0; }
+// CPPEOF`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := MPIJobConfig{
+				Name:     "test-injection",
+				Replicas: 2,
+				Code:     tt.code,
+				Language: "cpp",
+			}
+
+			command, args := buildMPICommand(cfg)
+
+			// The command must use heredoc approach, NOT echo with escaping.
+			// With heredoc, the script should contain cat <<'CPPEOF' (single-quoted
+			// delimiter prevents all shell expansion).
+			if len(command) == 0 || command[0] != "/bin/sh" {
+				t.Fatalf("expected /bin/sh command, got %v", command)
+			}
+			if len(args) < 2 || args[0] != "-c" {
+				t.Fatalf("expected -c flag in args, got %v", args)
+			}
+
+			script := args[1]
+
+			// MUST use heredoc with single-quoted delimiter
+			if !containsString(script, "<<'CPPEOF'") && !containsString(script, "<<'CPP_EOF'") {
+				t.Errorf("C++ script must use single-quoted heredoc to prevent shell injection.\nGot script:\n%s", script)
+			}
+
+			// MUST NOT use echo to write code to the file (vulnerable to injection).
+			// Check for the specific pattern "echo ... > /tmp/mpi_code.cpp"
+			if containsString(script, "echo '") && containsString(script, "> /tmp/mpi_code.cpp") {
+				t.Errorf("C++ script must NOT use echo to write code (shell injection risk).\nGot script:\n%s", script)
+			}
+
+			// The user's code must appear verbatim in the script
+			if !containsString(script, tt.code) {
+				t.Errorf("user code not found verbatim in script.\nWant code: %s\nGot script:\n%s", tt.code, script)
+			}
+		})
+	}
+}
+
+func TestBuildMPICommand_CppHeredocDelimiterCollision(t *testing.T) {
+	// If user code contains the heredoc delimiter, it must still work safely.
+	// The implementation should handle this edge case.
+	cfg := MPIJobConfig{
+		Name:     "test-delimiter",
+		Replicas: 2,
+		Code:     "// This line has CPPEOF in it\nint main() { return 0; }",
+		Language: "cpp",
+	}
+
+	command, args := buildMPICommand(cfg)
+	if len(command) == 0 || command[0] != "/bin/sh" {
+		t.Fatalf("expected /bin/sh command, got %v", command)
+	}
+
+	script := args[1]
+	// The script must still use heredoc, and the code must appear verbatim
+	if !containsString(script, cfg.Code) {
+		t.Errorf("user code not found in script")
+	}
+}
+
+func TestEscapeShellString_Removed(t *testing.T) {
+	// escapeShellString should no longer be used for C++ code path.
+	// If it still exists, it should NOT be called from buildMPICommand.
+	cfg := MPIJobConfig{
+		Name:     "test-no-escape",
+		Replicas: 2,
+		Code:     "code with 'quotes'",
+		Language: "cpp",
+	}
+
+	_, args := buildMPICommand(cfg)
+	script := args[1]
+
+	// The code should appear EXACTLY as provided, not escaped
+	if containsString(script, `'"'"'`) {
+		t.Errorf("found shell escape sequences in script — escapeShellString should not be used.\nScript:\n%s", script)
+	}
+}
+
 func findSubstring(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

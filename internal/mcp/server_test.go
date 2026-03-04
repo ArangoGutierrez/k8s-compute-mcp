@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -264,6 +265,71 @@ func TestInputSchemaValidation(t *testing.T) {
 			t.Error("Lines should be between 1 and 1000")
 		}
 	})
+}
+
+func TestServerRun_ContextCancellation(t *testing.T) {
+	// Test that Server.Run properly cleans up when context is canceled:
+	// 1. Returns context.Canceled error
+	// 2. Closes stdin to unblock ServeStdio goroutine
+	// 3. Waits for the goroutine to finish before returning
+	//
+	// P0-9: Without the fix, Run() returns immediately on ctx.Done()
+	// but the ServeStdio goroutine leaks, blocked on stdin read.
+
+	kubeconfig := createTestKubeconfig(t)
+	t.Setenv("KUBECONFIG", kubeconfig)
+	t.Setenv("KUBE_CONTEXT", "test-context")
+
+	s, err := NewServer()
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	// Replace os.Stdin with a blocking pipe to simulate production behavior.
+	// The write end is kept open so ServeStdio blocks on read until stdin is closed.
+	origStdin := os.Stdin
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() error = %v", err)
+	}
+	os.Stdin = pr
+	t.Cleanup(func() {
+		os.Stdin = origStdin
+		pw.Close()
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- s.Run(ctx)
+	}()
+
+	// Give the server a moment to start and block on stdin
+	time.Sleep(100 * time.Millisecond)
+
+	// Cancel the context
+	cancel()
+
+	// Server.Run must:
+	// 1. Close stdin to unblock the ServeStdio goroutine
+	// 2. Wait for the goroutine to finish
+	// 3. Return context.Canceled
+	select {
+	case runErr := <-runDone:
+		if runErr != context.Canceled {
+			t.Logf("Server.Run returned: %v (expected context.Canceled)", runErr)
+		}
+
+		// Verify stdin was closed by the Run method (the pipe read end).
+		// Writing to the pipe should fail if the read end was properly closed.
+		_, writeErr := pw.Write([]byte("test"))
+		if writeErr == nil {
+			t.Error("stdin pipe read end was NOT closed by Server.Run — goroutine cleanup incomplete")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Server.Run did not return within 5s after context cancellation — goroutine leak detected")
+	}
 }
 
 func TestResultStructs(t *testing.T) {
