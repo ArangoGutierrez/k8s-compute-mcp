@@ -19,10 +19,9 @@ type HealthChecker interface {
 
 // HealthServer serves HTTP health endpoints on the configured address.
 type HealthServer struct {
-	addr     string
-	checker  HealthChecker
-	server   *http.Server
-	listener net.Listener
+	addr    string
+	checker HealthChecker
+	server  *http.Server
 }
 
 // NewHealthServer creates a new HealthServer.
@@ -58,7 +57,6 @@ func (h *HealthServer) Start(ctx context.Context) error {
 // StartWithListener starts the HTTP server on the provided listener.
 // This is useful for testing where the caller controls the listener.
 func (h *HealthServer) StartWithListener(ctx context.Context, ln net.Listener) error {
-	h.listener = ln
 	log.Printf("Health server listening on %s", ln.Addr().String())
 
 	// Shut down gracefully when context is canceled.
@@ -81,8 +79,7 @@ func (h *HealthServer) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
+		log.Printf("Failed to encode healthz response: %v", err)
 	}
 }
 
@@ -95,15 +92,13 @@ func (h *HealthServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
 			"status":  "error",
 			"message": err.Error(),
 		}); err != nil {
-			http.Error(w, "failed to encode response", http.StatusInternalServerError)
-			return
+			log.Printf("Failed to encode readyz error response: %v", err)
 		}
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
+		log.Printf("Failed to encode readyz response: %v", err)
 	}
 }
