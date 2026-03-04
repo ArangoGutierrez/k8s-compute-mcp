@@ -49,16 +49,6 @@ func TestInstrumentToolCall_Success(t *testing.T) {
 		t.Errorf("expected error counter = 0, got %f", errCount)
 	}
 
-	// Verify duration histogram recorded
-	expected := `
-		# HELP mcp_tool_duration_seconds Duration of MCP tool invocations
-		# TYPE mcp_tool_duration_seconds histogram
-	`
-	if err := testutil.CollectAndCompare(ToolDurationSeconds, strings.NewReader(expected), "mcp_tool_duration_seconds"); err != nil {
-		// We just verify the metric exists and has observations, not exact values
-		// testutil.CollectAndCompare checks metadata, so a mismatch on bucket values is expected
-	}
-
 	// Verify histogram has at least one observation by checking the metric count
 	durationCount := testutil.CollectAndCount(ToolDurationSeconds)
 	if durationCount == 0 {
