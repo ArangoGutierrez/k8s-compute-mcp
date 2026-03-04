@@ -6,6 +6,8 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +15,28 @@ import (
 
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
 )
+
+var (
+	// namespaceRegexp validates RFC 1123 label names.
+	namespaceRegexp = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+	// safePathRegexp validates allowed characters in artifact paths.
+	safePathRegexp = regexp.MustCompile(`^[a-zA-Z0-9._/\-]+$`)
+)
+
+// validateNamespace validates a Kubernetes namespace name per RFC 1123.
+func validateNamespace(ns string) error {
+	if ns == "" {
+		return fmt.Errorf("namespace cannot be empty")
+	}
+	if len(ns) > 63 {
+		return fmt.Errorf("namespace must be at most 63 characters, got %d", len(ns))
+	}
+	if !namespaceRegexp.MatchString(ns) {
+		return fmt.Errorf("namespace %q is invalid: must match RFC 1123 label (lowercase alphanumeric and hyphens, must start and end with alphanumeric)", ns)
+	}
+	return nil
+}
 
 // generateJobName creates a unique job name with the given prefix.
 // Format: prefix-timestamp-random (e.g., mpi-20260124-a1b2c)
@@ -58,8 +82,11 @@ func (s *Server) handleSubmitMPIJob(ctx context.Context, input SubmitMPIJobInput
 	}
 
 	// 2. Generate unique job name
-	jobName := generateJobName("mpi")
 	namespace := s.resolveNamespace(input.Namespace)
+	if err := validateNamespace(namespace); err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+	jobName := generateJobName("mpi")
 
 	// 3. Build MPIJob manifest
 	cfg := k8s.MPIJobConfig{
@@ -111,8 +138,11 @@ func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCa
 	// The JobSet controller injects this automatically.
 
 	// 2. Generate unique JobSet name
-	jobName := generateJobName("mc")
 	namespace := s.resolveNamespace(input.Namespace)
+	if err := validateNamespace(namespace); err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+	jobName := generateJobName("mc")
 
 	// 3. Build JobSet manifest
 	cfg := k8s.JobSetConfig{
@@ -155,8 +185,11 @@ func (s *Server) handleSubmitReducer(ctx context.Context, input SubmitReducerInp
 	}
 
 	// 2. Generate unique job name
-	jobName := generateJobName("reduce")
 	namespace := s.resolveNamespace(input.Namespace)
+	if err := validateNamespace(namespace); err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+	jobName := generateJobName("reduce")
 
 	// 3. Build Batch Job manifest
 	cfg := k8s.ReducerJobConfig{
@@ -203,6 +236,9 @@ func (s *Server) handleCheckStatus(ctx context.Context, input CheckStatusInput) 
 	}
 
 	namespace := s.resolveNamespace(input.Namespace)
+	if err := validateNamespace(namespace); err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
 
 	// 2. Query appropriate API based on job_type
 	switch input.JobType {
@@ -334,15 +370,17 @@ func validateArtifactPath(path, mountPath string) error {
 		return fmt.Errorf("path is required")
 	}
 
-	// Normalize and check for traversal
-	// Path must start with the mount path
-	if !strings.HasPrefix(path, mountPath) {
-		return fmt.Errorf("path must be within %s, got: %s", mountPath, path)
+	// Validate path contains only safe characters
+	if !safePathRegexp.MatchString(path) {
+		return fmt.Errorf("path contains invalid characters: %s", path)
 	}
 
-	// Check for directory traversal attempts
-	if strings.Contains(path, "..") {
-		return fmt.Errorf("path traversal not allowed: %s", path)
+	// Clean the path to resolve any traversal sequences
+	cleaned := filepath.Clean(path)
+
+	// Path must be within the mount path (with trailing slash to prevent prefix attacks)
+	if cleaned != mountPath && !strings.HasPrefix(cleaned, mountPath+"/") {
+		return fmt.Errorf("path must be within %s, got: %s", mountPath, path)
 	}
 
 	return nil
