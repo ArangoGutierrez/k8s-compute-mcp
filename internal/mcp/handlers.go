@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/klog/v2"
 
 	"github.com/ArangoGutierrez/k8s-compute-mcp/internal/k8s"
 )
@@ -72,8 +73,11 @@ func validateCode(code string) error {
 //
 // This handler returns immediately after submission (non-blocking).
 func (s *Server) handleSubmitMPIJob(ctx context.Context, input SubmitMPIJobInput) (*SubmitResult, error) {
+	klog.InfoS("Handling submit_mpi_job", "namespace", input.Namespace, "nodes", input.Nodes, "language", input.Language)
+
 	// 1. Validate input
 	if err := validateCode(input.Code); err != nil {
+		klog.ErrorS(err, "Invalid code in submit_mpi_job")
 		return nil, fmt.Errorf("invalid code: %w", err)
 	}
 
@@ -103,11 +107,13 @@ func (s *Server) handleSubmitMPIJob(ctx context.Context, input SubmitMPIJobInput
 
 	mpijob, err := k8s.BuildMPIJob(cfg)
 	if err != nil {
+		klog.ErrorS(err, "Failed to build MPIJob manifest", "jobName", jobName)
 		return nil, fmt.Errorf("failed to build MPIJob manifest: %w", err)
 	}
 
 	// 4. Apply to cluster
 	if err := s.k8sClient.SubmitMPIJob(ctx, mpijob); err != nil {
+		klog.ErrorS(err, "Failed to submit MPIJob", "jobName", jobName, "namespace", namespace)
 		return nil, fmt.Errorf("failed to submit MPIJob: %w", err)
 	}
 
@@ -125,8 +131,11 @@ func (s *Server) handleSubmitMPIJob(ctx context.Context, input SubmitMPIJobInput
 //
 // CRITICAL: Injects JOB_COMPLETION_INDEX into output paths to prevent data races.
 func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCarloInput) (*SubmitResult, error) {
+	klog.InfoS("Handling submit_monte_carlo_batch", "namespace", input.Namespace, "replicas", input.Replicas)
+
 	// 1. Validate script
 	if err := validateCode(input.Script); err != nil {
+		klog.ErrorS(err, "Invalid script in submit_monte_carlo_batch")
 		return nil, fmt.Errorf("invalid script: %w", err)
 	}
 
@@ -158,11 +167,13 @@ func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCa
 
 	jobset, err := k8s.BuildJobSet(cfg)
 	if err != nil {
+		klog.ErrorS(err, "Failed to build JobSet manifest", "jobName", jobName)
 		return nil, fmt.Errorf("failed to build JobSet manifest: %w", err)
 	}
 
 	// 4. Apply to cluster
 	if err := s.k8sClient.SubmitJobSet(ctx, jobset); err != nil {
+		klog.ErrorS(err, "Failed to submit JobSet", "jobName", jobName, "namespace", namespace)
 		return nil, fmt.Errorf("failed to submit JobSet: %w", err)
 	}
 
@@ -179,8 +190,11 @@ func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCa
 // handleSubmitReducer handles the submit_reducer tool invocation.
 // It generates a Batch Job manifest for result aggregation.
 func (s *Server) handleSubmitReducer(ctx context.Context, input SubmitReducerInput) (*SubmitResult, error) {
+	klog.InfoS("Handling submit_reducer", "namespace", input.Namespace, "inputPattern", input.InputPattern)
+
 	// 1. Validate input
 	if err := validateCode(input.Script); err != nil {
+		klog.ErrorS(err, "Invalid script in submit_reducer")
 		return nil, fmt.Errorf("invalid script: %w", err)
 	}
 
@@ -205,11 +219,13 @@ func (s *Server) handleSubmitReducer(ctx context.Context, input SubmitReducerInp
 
 	job, err := k8s.BuildReducerJob(cfg)
 	if err != nil {
+		klog.ErrorS(err, "Failed to build reducer Job manifest", "jobName", jobName)
 		return nil, fmt.Errorf("failed to build reducer Job manifest: %w", err)
 	}
 
 	// 4. Apply to cluster
 	if err := s.k8sClient.SubmitJob(ctx, job); err != nil {
+		klog.ErrorS(err, "Failed to submit reducer Job", "jobName", jobName, "namespace", namespace)
 		return nil, fmt.Errorf("failed to submit reducer Job: %w", err)
 	}
 
@@ -230,6 +246,8 @@ func (s *Server) handleSubmitReducer(ctx context.Context, input SubmitReducerInp
 // handleCheckStatus handles the check_status tool invocation.
 // It queries the status of a specific job by ID and type.
 func (s *Server) handleCheckStatus(ctx context.Context, input CheckStatusInput) (*StatusResult, error) {
+	klog.InfoS("Handling check_status", "jobID", input.JobID, "jobType", input.JobType, "namespace", input.Namespace)
+
 	// 1. Validate input
 	if input.JobID == "" {
 		return nil, fmt.Errorf("job_id is required")
@@ -330,8 +348,11 @@ func (s *Server) getBatchJobStatus(ctx context.Context, namespace, name string) 
 //  4. Read pod logs (stdout contains file content)
 //  5. Delete pod (cleanup)
 func (s *Server) handleReadArtifactHead(ctx context.Context, input ReadArtifactInput) (*ArtifactResult, error) {
+	klog.InfoS("Handling read_artifact_head", "path", input.Path, "lines", input.Lines)
+
 	// 1. Validate path is within mount path to prevent path traversal
 	if err := validateArtifactPath(input.Path, s.config.PVCMountPath); err != nil {
+		klog.ErrorS(err, "Invalid artifact path", "path", input.Path)
 		return nil, err
 	}
 
@@ -353,6 +374,7 @@ func (s *Server) handleReadArtifactHead(ctx context.Context, input ReadArtifactI
 
 	result, err := s.k8sClient.ReadArtifactHead(ctx, cfg)
 	if err != nil {
+		klog.ErrorS(err, "Failed to read artifact", "path", input.Path)
 		return nil, fmt.Errorf("failed to read artifact: %w", err)
 	}
 
