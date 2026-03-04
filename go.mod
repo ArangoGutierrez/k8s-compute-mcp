@@ -3,10 +3,10 @@ module github.com/ArangoGutierrez/k8s-compute-mcp
 go 1.25.6
 
 require (
-	github.com/mark3labs/mcp-go v0.43.2
-	k8s.io/api v0.35.0
-	k8s.io/apimachinery v0.35.0
-	k8s.io/client-go v0.35.0
+	github.com/mark3labs/mcp-go v0.44.0
+	k8s.io/api v0.35.1
+	k8s.io/apimachinery v0.35.1
+	k8s.io/client-go v0.35.1
 	k8s.io/utils v0.0.0-20260108192941-914a6e750570
 )
 
