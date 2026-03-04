@@ -1,0 +1,89 @@
+{{- if .Values.rbac.create -}}
+{{- if .Values.rbac.clusterWide }}
+# Cluster-wide RBAC: ClusterRole + ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "k8s-compute-mcp.fullname" . }}
+  labels:
+    {{- include "k8s-compute-mcp.labels" . | nindent 4 }}
+rules:
+  # Core API: pods (create/delete for ephemeral reader pods, list for cleanup)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Batch API: Jobs (create for reducer jobs, get for status)
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "create"]
+  # Kubeflow MPI Operator: MPIJobs
+  - apiGroups: ["kubeflow.org"]
+    resources: ["mpijobs"]
+    verbs: ["get", "create"]
+  # JobSet API: JobSets (for Monte Carlo batch)
+  - apiGroups: ["jobset.x-k8s.io"]
+    resources: ["jobsets"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "k8s-compute-mcp.fullname" . }}
+  labels:
+    {{- include "k8s-compute-mcp.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "k8s-compute-mcp.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-compute-mcp.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- else }}
+# Namespace-scoped RBAC: Role + RoleBinding (default, least-privilege)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "k8s-compute-mcp.fullname" . }}
+  labels:
+    {{- include "k8s-compute-mcp.labels" . | nindent 4 }}
+rules:
+  # Core API: pods (create/delete for ephemeral reader pods, list for cleanup)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Batch API: Jobs (create for reducer jobs, get for status)
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "create"]
+  # Kubeflow MPI Operator: MPIJobs
+  - apiGroups: ["kubeflow.org"]
+    resources: ["mpijobs"]
+    verbs: ["get", "create"]
+  # JobSet API: JobSets (for Monte Carlo batch)
+  - apiGroups: ["jobset.x-k8s.io"]
+    resources: ["jobsets"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "k8s-compute-mcp.fullname" . }}
+  labels:
+    {{- include "k8s-compute-mcp.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "k8s-compute-mcp.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-compute-mcp.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}
