@@ -19,10 +19,10 @@ type HealthChecker interface {
 
 // HealthServer serves HTTP health endpoints on the configured address.
 type HealthServer struct {
-	addr      string
-	checker   HealthChecker
-	server    *http.Server
-	listener  net.Listener
+	addr     string
+	checker  HealthChecker
+	server   *http.Server
+	listener net.Listener
 }
 
 // NewHealthServer creates a new HealthServer.
