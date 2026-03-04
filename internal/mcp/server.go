@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -98,6 +99,9 @@ func NewServer() (*Server, error) {
 		),
 	)
 
+	// Initialize Prometheus metrics
+	InitMetrics()
+
 	s := &Server{
 		mcpServer: mcpServer,
 		k8sClient: client,
@@ -127,7 +131,7 @@ func (s *Server) registerTools() {
 		),
 		mcp.WithInputSchema[SubmitMPIJobInput](),
 	)
-	s.mcpServer.AddTool(submitMPIJobTool, newToolHandler(s.handleSubmitMPIJob))
+	s.mcpServer.AddTool(submitMPIJobTool, newToolHandler("submit_mpi_job", s.handleSubmitMPIJob))
 
 	// submit_monte_carlo_batch - Submit parallel Monte Carlo simulations
 	submitMonteCarloTool := mcp.NewTool(
@@ -139,7 +143,7 @@ func (s *Server) registerTools() {
 		),
 		mcp.WithInputSchema[SubmitMonteCarloInput](),
 	)
-	s.mcpServer.AddTool(submitMonteCarloTool, newToolHandler(s.handleSubmitMonteCarlo))
+	s.mcpServer.AddTool(submitMonteCarloTool, newToolHandler("submit_monte_carlo_batch", s.handleSubmitMonteCarlo))
 
 	// submit_reducer - Submit result aggregation jobs
 	submitReducerTool := mcp.NewTool(
@@ -150,7 +154,7 @@ func (s *Server) registerTools() {
 		),
 		mcp.WithInputSchema[SubmitReducerInput](),
 	)
-	s.mcpServer.AddTool(submitReducerTool, newToolHandler(s.handleSubmitReducer))
+	s.mcpServer.AddTool(submitReducerTool, newToolHandler("submit_reducer", s.handleSubmitReducer))
 
 	// check_status - Query job status
 	checkStatusTool := mcp.NewTool(
@@ -161,7 +165,7 @@ func (s *Server) registerTools() {
 		),
 		mcp.WithInputSchema[CheckStatusInput](),
 	)
-	s.mcpServer.AddTool(checkStatusTool, newToolHandler(s.handleCheckStatus))
+	s.mcpServer.AddTool(checkStatusTool, newToolHandler("check_status", s.handleCheckStatus))
 
 	// read_artifact_head - Read result files
 	readArtifactTool := mcp.NewTool(
@@ -172,22 +176,32 @@ func (s *Server) registerTools() {
 		),
 		mcp.WithInputSchema[ReadArtifactInput](),
 	)
-	s.mcpServer.AddTool(readArtifactTool, newToolHandler(s.handleReadArtifactHead))
+	s.mcpServer.AddTool(readArtifactTool, newToolHandler("read_artifact_head", s.handleReadArtifactHead))
 
 	klog.InfoS("Registered MCP tools", "count", 5)
 }
 
 // newToolHandler creates a type-safe MCP tool handler wrapper.
 // This is a generic function that bridges typed handler signatures with mcp-go.
+// The toolName parameter enables Prometheus metrics instrumentation at the dispatch level.
+// Metrics are recorded BEFORE the error-to-result conversion so handler errors
+// are correctly counted as errors, not successes.
 func newToolHandler[T any, R any](
+	toolName string,
 	handler func(context.Context, T) (*R, error),
 ) server.ToolHandlerFunc {
 	return mcp.NewTypedToolHandler(
 		func(ctx context.Context, req mcp.CallToolRequest, args T) (*mcp.CallToolResult, error) {
+			start := time.Now()
 			result, err := handler(ctx, args)
+			duration := time.Since(start).Seconds()
+			ToolDurationSeconds.WithLabelValues(toolName).Observe(duration)
 			if err != nil {
+				ToolRequestsTotal.WithLabelValues(toolName, "error").Inc()
+				ToolErrorsTotal.WithLabelValues(toolName, "handler_error").Inc()
 				return mcp.NewToolResultError(err.Error()), nil
 			}
+			ToolRequestsTotal.WithLabelValues(toolName, "success").Inc()
 			return mcp.NewToolResultStructured(result, ""), nil
 		},
 	)
