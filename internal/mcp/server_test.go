@@ -96,7 +96,7 @@ func TestNewToolHandler(t *testing.T) {
 		return &testOutput{Result: "processed: " + input.Value}, nil
 	}
 
-	wrappedHandler := newToolHandler(handler)
+	wrappedHandler := newToolHandler("test_tool", handler)
 	if wrappedHandler == nil {
 		t.Fatal("newToolHandler returned nil")
 	}
@@ -115,7 +115,7 @@ func TestNewToolHandler_Error(t *testing.T) {
 		return nil, context.DeadlineExceeded
 	}
 
-	wrappedHandler := newToolHandler(handler)
+	wrappedHandler := newToolHandler("test_tool", handler)
 	if wrappedHandler == nil {
 		t.Fatal("newToolHandler returned nil")
 	}
