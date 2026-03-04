@@ -4,7 +4,6 @@
 package mcp
 
 import (
-	"bytes"
 	"flag"
 	"os"
 	"strings"
@@ -12,58 +11,6 @@ import (
 
 	"k8s.io/klog/v2"
 )
-
-// setupKlogCapture redirects all klog output (including structured InfoS/ErrorS)
-// to a buffer by using klog's flag-based file output.
-// Returns the buffer. Output is available after calling klog.Flush().
-func setupKlogCapture(t *testing.T) *bytes.Buffer {
-	t.Helper()
-
-	dir := t.TempDir()
-	logFile := dir + "/klog.log"
-
-	// Configure klog to write to file instead of stderr
-	fs := flag.NewFlagSet("klog-test", flag.ContinueOnError)
-	klog.InitFlags(fs)
-	if err := fs.Set("log_file", logFile); err != nil {
-		t.Fatalf("Failed to set log_file: %v", err)
-	}
-	if err := fs.Set("logtostderr", "false"); err != nil {
-		t.Fatalf("Failed to set logtostderr: %v", err)
-	}
-	if err := fs.Set("alsologtostderr", "false"); err != nil {
-		t.Fatalf("Failed to set alsologtostderr: %v", err)
-	}
-
-	buf := &bytes.Buffer{}
-
-	t.Cleanup(func() {
-		klog.Flush()
-		// Read the log file into the buffer
-		data, err := os.ReadFile(logFile)
-		if err == nil {
-			buf.Write(data)
-		}
-		// Reset klog to default stderr output
-		fs2 := flag.NewFlagSet("klog-reset", flag.ContinueOnError)
-		klog.InitFlags(fs2)
-		_ = fs2.Set("logtostderr", "true")
-		_ = fs2.Set("log_file", "")
-	})
-
-	return buf
-}
-
-// flushAndRead flushes klog and returns all captured output so far.
-func flushAndRead(t *testing.T, buf *bytes.Buffer) string {
-	t.Helper()
-	// Trigger cleanup to read log file
-	klog.Flush()
-	// Read from the same temp dir log file
-	// The buffer gets populated during t.Cleanup, so we need another approach.
-	// Instead, we'll read the file directly.
-	return buf.String()
-}
 
 func TestNewServer_KlogStructuredOutput(t *testing.T) {
 	kubeconfig := createTestKubeconfig(t)

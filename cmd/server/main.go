@@ -28,7 +28,9 @@ func main() {
 	// Initialize klog flags and configure output to stderr
 	// to avoid interfering with MCP protocol on stdout
 	klog.InitFlags(nil)
-	flag.Set("logtostderr", "true")
+	if err := flag.Set("logtostderr", "true"); err != nil {
+		klog.ErrorS(err, "Failed to set logtostderr flag")
+	}
 	flag.Parse()
 	defer klog.Flush()
 
