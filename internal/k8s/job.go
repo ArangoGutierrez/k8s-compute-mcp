@@ -6,6 +6,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -131,11 +132,16 @@ func BuildReducerJob(cfg ReducerJobConfig) (*batchv1.Job, error) {
 }
 
 // SubmitJob applies a Batch Job manifest to the cluster.
+// The timeout is applied per-call so that retry wrappers can invoke this
+// method multiple times, each attempt getting its own 10s deadline.
 func (c *Client) SubmitJob(ctx context.Context, job *batchv1.Job) error {
 	namespace := job.Namespace
 	if namespace == "" {
 		namespace = c.namespace
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
 	_, err := c.clientset.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
@@ -150,6 +156,9 @@ func (c *Client) GetJobStatus(ctx context.Context, namespace, name string) (*bat
 	if namespace == "" {
 		namespace = c.namespace
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
 	job, err := c.clientset.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {

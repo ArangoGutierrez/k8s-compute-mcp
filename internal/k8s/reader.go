@@ -156,8 +156,11 @@ func (c *Client) ReadArtifactHead(ctx context.Context, cfg ReadArtifactConfig) (
 		return nil, fmt.Errorf("failed to build reader pod: %w", err)
 	}
 
-	// Create the pod
-	created, err := c.clientset.CoreV1().Pods(cfg.Namespace).Create(ctx, pod, metav1.CreateOptions{})
+	// Create the pod with a timeout
+	createCtx, createCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer createCancel()
+
+	created, err := c.clientset.CoreV1().Pods(cfg.Namespace).Create(createCtx, pod, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reader pod: %w", err)
 	}
