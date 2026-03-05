@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -90,7 +92,9 @@ func newMockK8sClient() *mockK8sClient {
 }
 
 // testServerWithMock creates a Server with the provided mock K8s client.
+// Also initializes metrics with a fresh registry to avoid nil pointer panics.
 func testServerWithMock(mock *mockK8sClient) *Server {
+	InitMetricsWithRegistry(prometheus.NewRegistry())
 	return &Server{
 		mcpServer: nil, // Not needed for handler tests
 		k8sClient: mock,
@@ -177,6 +181,16 @@ func TestValidateCode(t *testing.T) {
 			name:    "whitespace only",
 			code:    "   \n\t  ",
 			wantErr: true,
+		},
+		{
+			name:    "code exceeds max size",
+			code:    strings.Repeat("x", maxCodeBytes+1),
+			wantErr: true,
+		},
+		{
+			name:    "code at exact max size is valid",
+			code:    strings.Repeat("x", maxCodeBytes),
+			wantErr: false,
 		},
 	}
 
@@ -1118,5 +1132,57 @@ func TestResolveNamespace(t *testing.T) {
 				t.Errorf("resolveNamespace(%q) = %q, want %q", tt.inputNS, got, tt.wantNamespace)
 			}
 		})
+	}
+}
+
+// TestActiveJobsGauge_IncrementedOnSubmit verifies the ActiveJobs gauge is incremented
+// after each successful job submission.
+func TestActiveJobsGauge_IncrementedOnSubmit(t *testing.T) {
+	_ = newTestRegistry()
+
+	mock := newMockK8sClient()
+	s := testServerWithMock(mock)
+	ctx := context.Background()
+
+	// Submit an MPIJob
+	_, err := s.handleSubmitMPIJob(ctx, SubmitMPIJobInput{
+		Code:     "print('hello')",
+		Language: "python",
+		Nodes:    2,
+	})
+	if err != nil {
+		t.Fatalf("handleSubmitMPIJob error: %v", err)
+	}
+
+	mpijobCount := testutil.ToFloat64(ActiveJobs.WithLabelValues("default", "mpijob"))
+	if mpijobCount != 1 {
+		t.Errorf("ActiveJobs(default, mpijob) = %f, want 1", mpijobCount)
+	}
+
+	// Submit a Monte Carlo batch
+	_, err = s.handleSubmitMonteCarlo(ctx, SubmitMonteCarloInput{
+		Script:   "import random; print(random.random())",
+		Replicas: 3,
+	})
+	if err != nil {
+		t.Fatalf("handleSubmitMonteCarlo error: %v", err)
+	}
+
+	jobsetCount := testutil.ToFloat64(ActiveJobs.WithLabelValues("default", "jobset"))
+	if jobsetCount != 1 {
+		t.Errorf("ActiveJobs(default, jobset) = %f, want 1", jobsetCount)
+	}
+
+	// Submit a Reducer job
+	_, err = s.handleSubmitReducer(ctx, SubmitReducerInput{
+		Script: "print('reduce')",
+	})
+	if err != nil {
+		t.Fatalf("handleSubmitReducer error: %v", err)
+	}
+
+	jobCount := testutil.ToFloat64(ActiveJobs.WithLabelValues("default", "job"))
+	if jobCount != 1 {
+		t.Errorf("ActiveJobs(default, job) = %f, want 1", jobCount)
 	}
 }

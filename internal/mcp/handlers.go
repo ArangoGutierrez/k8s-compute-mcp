@@ -25,6 +25,13 @@ var (
 	safePathRegexp = regexp.MustCompile(`^[a-zA-Z0-9._/\-]+$`)
 )
 
+const (
+	// maxCodeBytes is the maximum allowed size for user-provided code/scripts (64 KiB).
+	// This prevents abuse via arbitrarily large payloads injected into pod specs,
+	// while comfortably fitting real inline scripts. K8s etcd has a 1.5 MiB object limit.
+	maxCodeBytes = 64 * 1024
+)
+
 // validateNamespace validates a Kubernetes namespace name per RFC 1123.
 func validateNamespace(ns string) error {
 	if ns == "" {
@@ -58,12 +65,12 @@ func (s *Server) resolveNamespace(ns string) string {
 // validateCode performs basic validation on user-provided code.
 // Returns an error if the code appears to be malicious or invalid.
 func validateCode(code string) error {
+	if len(code) > maxCodeBytes {
+		return fmt.Errorf("code exceeds maximum size of %d bytes, got %d", maxCodeBytes, len(code))
+	}
 	if strings.TrimSpace(code) == "" {
 		return fmt.Errorf("code cannot be empty")
 	}
-
-	// Note: Additional validation (dangerous patterns, etc.) could be added here.
-	// The cluster has its own security boundaries, so we keep validation minimal.
 
 	return nil
 }
@@ -116,6 +123,9 @@ func (s *Server) handleSubmitMPIJob(ctx context.Context, input SubmitMPIJobInput
 		klog.ErrorS(err, "Failed to submit MPIJob", "jobName", jobName, "namespace", namespace)
 		return nil, fmt.Errorf("failed to submit MPIJob: %w", err)
 	}
+
+	// TODO: decrement on job completion (requires background reconciler)
+	ActiveJobs.WithLabelValues(namespace, "mpijob").Inc()
 
 	// 5. Return job ID immediately (non-blocking)
 	return &SubmitResult{
@@ -177,6 +187,9 @@ func (s *Server) handleSubmitMonteCarlo(ctx context.Context, input SubmitMonteCa
 		return nil, fmt.Errorf("failed to submit JobSet: %w", err)
 	}
 
+	// TODO: decrement on job completion (requires background reconciler)
+	ActiveJobs.WithLabelValues(namespace, "jobset").Inc()
+
 	// 5. Return job ID immediately (non-blocking)
 	return &SubmitResult{
 		JobID:     jobName,
@@ -228,6 +241,9 @@ func (s *Server) handleSubmitReducer(ctx context.Context, input SubmitReducerInp
 		klog.ErrorS(err, "Failed to submit reducer Job", "jobName", jobName, "namespace", namespace)
 		return nil, fmt.Errorf("failed to submit reducer Job: %w", err)
 	}
+
+	// TODO: decrement on job completion (requires background reconciler)
+	ActiveJobs.WithLabelValues(namespace, "job").Inc()
 
 	// 5. Return job ID immediately (non-blocking)
 	msg := fmt.Sprintf("Reducer Job '%s' submitted successfully", jobName)

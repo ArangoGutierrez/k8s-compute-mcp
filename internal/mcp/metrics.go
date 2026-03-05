@@ -73,7 +73,9 @@ func InitMetricsWithRegistry(reg prometheus.Registerer) {
 	// Initialize zero-valued label combinations so metrics appear in /metrics output
 	// even before any observations occur. This aids dashboard setup and alerting.
 	ToolErrorsTotal.WithLabelValues("", "handler_error")
-	ActiveJobs.WithLabelValues("", "")
+	ActiveJobs.WithLabelValues("", "mpijob")
+	ActiveJobs.WithLabelValues("", "jobset")
+	ActiveJobs.WithLabelValues("", "job")
 }
 
 // InstrumentToolCall wraps a tool call function with metrics instrumentation.
