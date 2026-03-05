@@ -1,0 +1,126 @@
+# Copyright 2026 k8s-compute-mcp contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Security Scan Workflow
+#
+# Runs 4 security scanners in parallel:
+# - govulncheck: Go vulnerability database (official Go tool)
+# - trivy: Container image scanning (Dockerfile-based)
+# - license-check: SPDX license compliance verification
+# - gosec: Go static analysis for security (SAST)
+#
+# Results: GitHub Security tab (gosec, trivy SARIF uploads) + job logs
+# Schedule: Weekly on Sunday 00:00 UTC
+
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0' # Every Sunday at 00:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  govulncheck:
+    name: Go vulnerability check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  trivy:
+    name: Container image scan with Trivy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/Dockerfile
+          push: false
+          load: true
+          tags: k8s-compute-mcp:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@0.34.2
+        with:
+          image-ref: 'k8s-compute-mcp:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  license-check:
+    name: SPDX license compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Check license compliance
+        run: go-licenses check ./... --allowed_licenses=Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0
+
+  gosec:
+    name: SAST with gosec
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run gosec
+        uses: securego/gosec@v2.24.7
+        with:
+          args: '-no-fail -fmt sarif -out gosec-results.sarif ./...'
+
+      - name: Upload gosec SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
