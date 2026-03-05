@@ -6,6 +6,7 @@ package k8s
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -184,7 +186,10 @@ func (c *Client) ReadArtifactHead(ctx context.Context, cfg ReadArtifactConfig) (
 	// Check if the pod failed
 	if finalPod.Status.Phase == corev1.PodFailed {
 		// Try to get logs for error details
-		logs, _ := c.getPodLogs(ctx, cfg.Namespace, podName)
+		logs, err := c.getPodLogs(ctx, cfg.Namespace, podName)
+		if err != nil {
+			klog.ErrorS(err, "Failed to get pod logs", "pod", podName, "namespace", cfg.Namespace)
+		}
 		if logs != "" {
 			return nil, fmt.Errorf("reader pod failed: %s", logs)
 		}
@@ -297,13 +302,12 @@ func (c *Client) CleanupOrphanedReaderPods(ctx context.Context, namespace string
 		return fmt.Errorf("failed to list reader pods: %w", err)
 	}
 
-	var lastErr error
+	var errs []error
 	for _, pod := range pods.Items {
 		if err := c.deleteReaderPod(ctx, namespace, pod.Name); err != nil {
-			lastErr = err
-			// Continue deleting other pods even if one fails
+			errs = append(errs, err)
 		}
 	}
 
-	return lastErr
+	return errors.Join(errs...)
 }
