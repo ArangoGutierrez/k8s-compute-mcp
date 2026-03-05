@@ -51,9 +51,8 @@ var _ = BeforeSuite(func() {
 	var err error
 	mcpClient, err = NewMCPClient(ctx)
 	Expect(err).NotTo(HaveOccurred())
-
-	// Wait for server initialization
-	time.Sleep(2 * time.Second)
+	// No sleep needed: NewMCPClient.initialize() performs the MCP
+	// handshake, confirming the server is ready before returning.
 })
 
 var _ = AfterSuite(func() {
