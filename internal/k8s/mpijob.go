@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -275,6 +276,9 @@ func (c *Client) SubmitMPIJob(ctx context.Context, mpijob *unstructured.Unstruct
 		namespace = c.namespace
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	_, err := c.dynamicClient.Resource(MPIJobGVR).Namespace(namespace).Create(ctx, mpijob, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create MPIJob: %w", err)
@@ -289,16 +293,13 @@ func (c *Client) GetMPIJobStatus(ctx context.Context, namespace, name string) (s
 		namespace = c.namespace
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	mpijob, err := c.dynamicClient.Resource(MPIJobGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to get MPIJob %s/%s: %w", namespace, name, err)
 	}
 
-	// Extract phase from status
-	phase, _, err := unstructured.NestedString(mpijob.Object, "status", "conditions", "type")
-	if err != nil {
-		return "Unknown", nil
-	}
-
-	return phase, nil
+	return extractConditionPhase(mpijob.Object)
 }

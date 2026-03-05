@@ -6,6 +6,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -199,6 +200,9 @@ func (c *Client) SubmitJobSet(ctx context.Context, jobset *unstructured.Unstruct
 		namespace = c.namespace
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	_, err := c.dynamicClient.Resource(JobSetGVR).Namespace(namespace).Create(ctx, jobset, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create JobSet: %w", err)
@@ -213,16 +217,13 @@ func (c *Client) GetJobSetStatus(ctx context.Context, namespace, name string) (s
 		namespace = c.namespace
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	jobset, err := c.dynamicClient.Resource(JobSetGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to get JobSet %s/%s: %w", namespace, name, err)
 	}
 
-	// Extract phase from status
-	phase, _, err := unstructured.NestedString(jobset.Object, "status", "conditions", "type")
-	if err != nil {
-		return "Unknown", nil
-	}
-
-	return phase, nil
+	return extractConditionPhase(jobset.Object)
 }
