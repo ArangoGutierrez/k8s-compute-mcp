@@ -307,8 +307,6 @@ func TestBuildReaderPodName(t *testing.T) {
 }
 
 func TestReadArtifactHead_CreatesPodWithCorrectSpec(t *testing.T) {
-	mockClient := NewMockClient()
-
 	cfg := ReadArtifactConfig{
 		Path:      "/mnt/data/results/output.json",
 		Lines:     50,
@@ -318,39 +316,19 @@ func TestReadArtifactHead_CreatesPodWithCorrectSpec(t *testing.T) {
 		Timeout:   2 * time.Second,
 	}
 
-	// ReadArtifactHead will fail at waitForPodCompletion (pod never transitions),
-	// but we can verify the pod was created with the correct spec.
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	_, _ = mockClient.ReadArtifactHead(ctx, cfg)
-
-	// List all pods to find the created reader pod
-	pods, err := mockClient.Clientset().CoreV1().Pods("default").List(
-		context.Background(),
-		metav1.ListOptions{},
-	)
-	if err != nil {
-		t.Fatalf("failed to list pods: %v", err)
-	}
-
-	// The pod should have been cleaned up by the defer in ReadArtifactHead,
-	// so check via a reactor that captures the create call.
-	// Instead, we verify the function attempted to create a pod by using a PrependReactor.
-	// Re-test with a reactor to capture the pod spec.
+	// Use a reactor to capture the pod spec before it hits the fake API.
 	var createdPod *corev1.Pod
-	mockClient2 := NewMockClient()
-	mockClient2.FakeClientset.PrependReactor("create", "pods", func(action kubetesting.Action) (bool, runtime.Object, error) {
+	mockClient := NewMockClient()
+	mockClient.FakeClientset.PrependReactor("create", "pods", func(action kubetesting.Action) (bool, runtime.Object, error) {
 		createAction := action.(kubetesting.CreateAction)
 		pod := createAction.GetObject().(*corev1.Pod)
 		createdPod = pod.DeepCopy()
-		// Return the pod as "created" but in Pending phase
 		return false, nil, nil
 	})
 
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel2()
-	_, _ = mockClient2.ReadArtifactHead(ctx2, cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _ = mockClient.ReadArtifactHead(ctx, cfg)
 
 	if createdPod == nil {
 		t.Fatal("ReadArtifactHead did not create a pod")
@@ -387,7 +365,7 @@ func TestReadArtifactHead_CreatesPodWithCorrectSpec(t *testing.T) {
 	}
 
 	// Verify cleanup: after ReadArtifactHead returns, pod should be deleted
-	pods, err = mockClient2.Clientset().CoreV1().Pods("default").List(
+	pods, err := mockClient.Clientset().CoreV1().Pods("default").List(
 		context.Background(),
 		metav1.ListOptions{},
 	)
