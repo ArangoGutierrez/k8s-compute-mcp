@@ -6,10 +6,11 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net"
 	"net/http"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 // HealthChecker abstracts the K8s connectivity check for testability.
@@ -57,7 +58,7 @@ func (h *HealthServer) Start(ctx context.Context) error {
 // StartWithListener starts the HTTP server on the provided listener.
 // This is useful for testing where the caller controls the listener.
 func (h *HealthServer) StartWithListener(ctx context.Context, ln net.Listener) error {
-	log.Printf("Health server listening on %s", ln.Addr().String())
+	klog.InfoS("Health server listening", "addr", ln.Addr().String())
 
 	// Shut down gracefully when context is canceled.
 	go func() {
@@ -65,7 +66,7 @@ func (h *HealthServer) StartWithListener(ctx context.Context, ln net.Listener) e
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := h.server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Health server shutdown error: %v", err)
+			klog.ErrorS(err, "Health server shutdown error")
 		}
 	}()
 
@@ -79,7 +80,7 @@ func (h *HealthServer) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-		log.Printf("Failed to encode healthz response: %v", err)
+		klog.ErrorS(err, "Failed to encode healthz response")
 	}
 }
 
@@ -92,13 +93,13 @@ func (h *HealthServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
 			"status":  "error",
 			"message": err.Error(),
 		}); err != nil {
-			log.Printf("Failed to encode readyz error response: %v", err)
+			klog.ErrorS(err, "Failed to encode readyz error response")
 		}
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-		log.Printf("Failed to encode readyz response: %v", err)
+		klog.ErrorS(err, "Failed to encode readyz response")
 	}
 }

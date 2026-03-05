@@ -221,7 +221,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	go func() {
 		if err := healthServer.Start(ctx); err != nil {
-			log.Printf("Health server error (non-fatal): %v", err)
+			klog.ErrorS(err, "Health server error (non-fatal)")
 		}
 	}()
 
