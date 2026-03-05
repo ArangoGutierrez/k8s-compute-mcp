@@ -1,0 +1,30 @@
+{
+  "_comment": "Example JSON-RPC request/response for the check_status tool",
+
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "check_status",
+      "arguments": {
+        "job_id": "mc-20260305-x9y8z",
+        "job_type": "jobset",
+        "namespace": "compute"
+      }
+    }
+  },
+
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"job_id\":\"mc-20260305-x9y8z\",\"phase\":\"Succeeded\",\"ready\":0,\"succeeded\":10,\"failed\":0,\"message\":\"JobSet 'compute/mc-20260305-x9y8z' is in phase: Succeeded\"}"
+        }
+      ]
+    }
+  }
+}
