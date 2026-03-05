@@ -55,34 +55,22 @@ resources:
   limits:
     memory: 256Mi
 
-# Metrics and health check port
-metricsPort: 8080
+service:
+  metricsPort: 8080
 
-# Liveness probe configuration (checks /healthz)
-livenessProbe:
-  httpGet:
-    path: /healthz
-    port: metrics
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  timeoutSeconds: 3
-  failureThreshold: 3
-
-# Readiness probe configuration (checks /readyz)
-readinessProbe:
-  httpGet:
-    path: /readyz
-    port: metrics
-  initialDelaySeconds: 3
-  periodSeconds: 5
-  timeoutSeconds: 3
-  failureThreshold: 3
-
-# Prometheus metrics scraping
-prometheus:
-  enabled: true
-  path: /metrics
-  port: "8080"
+probes:
+  liveness:
+    httpGet:
+      path: /healthz
+      port: metrics
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    httpGet:
+      path: /readyz
+      port: metrics
+    initialDelaySeconds: 5
+    periodSeconds: 10
 
 nodeSelector: {}
 
