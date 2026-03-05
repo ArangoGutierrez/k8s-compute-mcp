@@ -1,0 +1,135 @@
+# GoReleaser configuration for k8s-compute-mcp
+# Documentation: https://goreleaser.com
+
+version: 2
+
+builds:
+  - id: k8s-compute-mcp
+    main: ./cmd/server
+    binary: k8s-compute-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/ArangoGutierrez/k8s-compute-mcp/internal/info.Version={{ .Version }}
+      - -X github.com/ArangoGutierrez/k8s-compute-mcp/internal/info.GitCommit={{ .Commit }}
+
+archives:
+  - id: k8s-compute-mcp
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^feat:'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^fix:'
+      order: 1
+    - title: Performance
+      regexp: '^perf:'
+      order: 2
+    - title: CI/CD
+      regexp: '^ci:'
+      order: 3
+    - title: Others
+      order: 999
+
+dockers:
+  - image_templates:
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}-amd64"
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:latest-amd64"
+    dockerfile: deployment/Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source={{ .GitURL }}"
+    goos: linux
+    goarch: amd64
+
+  - image_templates:
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}-arm64"
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:latest-arm64"
+    dockerfile: deployment/Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source={{ .GitURL }}"
+    goos: linux
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}-amd64"
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/arangogutierrez/k8s-compute-mcp:latest"
+    image_templates:
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:latest-amd64"
+      - "ghcr.io/arangogutierrez/k8s-compute-mcp:latest-arm64"
+
+release:
+  github:
+    owner: ArangoGutierrez
+    name: k8s-compute-mcp
+  draft: false
+  prerelease: auto
+  name_template: "{{ .ProjectName }} {{ .Version }}"
+  header: |
+    ## k8s-compute-mcp {{ .Version }}
+
+    **Kubernetes Compute MCP Server**
+
+  footer: |
+    ## Installation
+
+    ### Binary
+    ```bash
+    curl -LO https://github.com/ArangoGutierrez/k8s-compute-mcp/releases/download/{{ .Tag }}/k8s-compute-mcp_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz
+    tar -xzf k8s-compute-mcp_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz
+    sudo mv k8s-compute-mcp /usr/local/bin/
+    ```
+
+    ### Container Image
+    ```bash
+    docker pull ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}
+    ```
+
+    **Full Changelog**: https://github.com/ArangoGutierrez/k8s-compute-mcp/compare/{{ .PreviousTag }}...{{ .Tag }}
