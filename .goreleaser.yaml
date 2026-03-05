@@ -67,7 +67,7 @@ dockers:
   - image_templates:
       - "ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}-amd64"
       - "ghcr.io/arangogutierrez/k8s-compute-mcp:latest-amd64"
-    dockerfile: deployment/Dockerfile
+    dockerfile: deployment/Dockerfile.goreleaser
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
@@ -82,7 +82,7 @@ dockers:
   - image_templates:
       - "ghcr.io/arangogutierrez/k8s-compute-mcp:{{ .Version }}-arm64"
       - "ghcr.io/arangogutierrez/k8s-compute-mcp:latest-arm64"
-    dockerfile: deployment/Dockerfile
+    dockerfile: deployment/Dockerfile.goreleaser
     use: buildx
     build_flag_templates:
       - "--platform=linux/arm64"
