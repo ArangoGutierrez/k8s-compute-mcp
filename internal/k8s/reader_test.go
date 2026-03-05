@@ -5,11 +5,15 @@ package k8s
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	kubetesting "k8s.io/client-go/testing"
 )
 
 func TestBuildReaderPod(t *testing.T) {
@@ -302,79 +306,186 @@ func TestBuildReaderPodName(t *testing.T) {
 	}
 }
 
-func TestReadArtifactHead_Success(t *testing.T) {
-	// Create mock client
+func TestReadArtifactHead_CreatesPodWithCorrectSpec(t *testing.T) {
 	mockClient := NewMockClient()
 
-	// Pre-create a completed pod with logs
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "reader-test-12345",
-			Namespace: "default",
-			Labels: map[string]string{
-				ReaderLabelKey: ReaderLabelValue,
-			},
-		},
-		Status: corev1.PodStatus{
-			Phase: corev1.PodSucceeded,
-		},
+	cfg := ReadArtifactConfig{
+		Path:      "/mnt/data/results/output.json",
+		Lines:     50,
+		Namespace: "default",
+		PVCName:   "shared-data",
+		MountPath: "/mnt/data",
+		Timeout:   2 * time.Second,
 	}
 
-	_, err := mockClient.Clientset().CoreV1().Pods("default").Create(
+	// ReadArtifactHead will fail at waitForPodCompletion (pod never transitions),
+	// but we can verify the pod was created with the correct spec.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, _ = mockClient.ReadArtifactHead(ctx, cfg)
+
+	// List all pods to find the created reader pod
+	pods, err := mockClient.Clientset().CoreV1().Pods("default").List(
 		context.Background(),
-		pod,
-		metav1.CreateOptions{},
+		metav1.ListOptions{},
 	)
 	if err != nil {
-		t.Fatalf("failed to create test pod: %v", err)
+		t.Fatalf("failed to list pods: %v", err)
 	}
 
-	// Note: The fake clientset doesn't support log streaming,
-	// so we test the pod creation and cleanup flow separately.
-	// Full integration testing requires a real cluster or more sophisticated mocking.
+	// The pod should have been cleaned up by the defer in ReadArtifactHead,
+	// so check via a reactor that captures the create call.
+	// Instead, we verify the function attempted to create a pod by using a PrependReactor.
+	// Re-test with a reactor to capture the pod spec.
+	var createdPod *corev1.Pod
+	mockClient2 := NewMockClient()
+	mockClient2.FakeClientset.PrependReactor("create", "pods", func(action kubetesting.Action) (bool, runtime.Object, error) {
+		createAction := action.(kubetesting.CreateAction)
+		pod := createAction.GetObject().(*corev1.Pod)
+		createdPod = pod.DeepCopy()
+		// Return the pod as "created" but in Pending phase
+		return false, nil, nil
+	})
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel2()
+	_, _ = mockClient2.ReadArtifactHead(ctx2, cfg)
+
+	if createdPod == nil {
+		t.Fatal("ReadArtifactHead did not create a pod")
+	}
+
+	// Verify pod spec
+	if createdPod.Namespace != "default" {
+		t.Errorf("namespace = %q, want %q", createdPod.Namespace, "default")
+	}
+	if createdPod.Labels[ReaderLabelKey] != ReaderLabelValue {
+		t.Errorf("label %s = %q, want %q", ReaderLabelKey, createdPod.Labels[ReaderLabelKey], ReaderLabelValue)
+	}
+	if len(createdPod.Spec.Containers) != 1 {
+		t.Fatalf("containers = %d, want 1", len(createdPod.Spec.Containers))
+	}
+	c := createdPod.Spec.Containers[0]
+	if len(c.Command) != 1 || c.Command[0] != "head" {
+		t.Errorf("command = %v, want [head]", c.Command)
+	}
+	wantArgs := []string{"-n", "50", "--", "/mnt/data/results/output.json"}
+	if len(c.Args) != len(wantArgs) {
+		t.Fatalf("args = %v, want %v", c.Args, wantArgs)
+	}
+	for i, a := range c.Args {
+		if a != wantArgs[i] {
+			t.Errorf("args[%d] = %q, want %q", i, a, wantArgs[i])
+		}
+	}
+	if len(c.VolumeMounts) != 1 || c.VolumeMounts[0].MountPath != "/mnt/data" {
+		t.Errorf("volume mount = %v, want mount at /mnt/data", c.VolumeMounts)
+	}
+	if !c.VolumeMounts[0].ReadOnly {
+		t.Error("volume mount should be read-only")
+	}
+
+	// Verify cleanup: after ReadArtifactHead returns, pod should be deleted
+	pods, err = mockClient2.Clientset().CoreV1().Pods("default").List(
+		context.Background(),
+		metav1.ListOptions{},
+	)
+	if err != nil {
+		t.Fatalf("failed to list pods: %v", err)
+	}
+	if len(pods.Items) != 0 {
+		t.Errorf("expected 0 pods after cleanup, got %d", len(pods.Items))
+	}
 }
 
-func TestReadArtifactHead_PodFailure(t *testing.T) {
-	// This test verifies the error handling when a pod fails.
-	// With the fake client, we can test the pod status checking logic.
-
+func TestReadArtifactHead_PodCreateError(t *testing.T) {
 	mockClient := NewMockClient()
 
-	// Pre-create a failed pod
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "reader-failed-test",
-			Namespace: "default",
-			Labels: map[string]string{
-				ReaderLabelKey: ReaderLabelValue,
+	// Make pod creation fail
+	mockClient.FakeClientset.PrependReactor("create", "pods", func(action kubetesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("simulated API error: quota exceeded")
+	})
+
+	cfg := ReadArtifactConfig{
+		Path:      "/mnt/data/file.txt",
+		Namespace: "default",
+		PVCName:   "shared-data",
+		Timeout:   2 * time.Second,
+	}
+
+	_, err := mockClient.ReadArtifactHead(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error when pod creation fails, got nil")
+	}
+	if !containsString(err.Error(), "failed to create reader pod") {
+		t.Errorf("error = %v, want containing 'failed to create reader pod'", err)
+	}
+}
+
+func TestReadArtifactHead_ContextCancellation(t *testing.T) {
+	mockClient := NewMockClient()
+
+	cfg := ReadArtifactConfig{
+		Path:      "/mnt/data/file.txt",
+		Namespace: "default",
+		PVCName:   "shared-data",
+		Timeout:   30 * time.Second, // long timeout
+	}
+
+	// Cancel the context immediately
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before calling
+
+	_, err := mockClient.ReadArtifactHead(ctx, cfg)
+	if err == nil {
+		t.Fatal("expected error when context is canceled, got nil")
+	}
+}
+
+func TestCleanupOrphanedReaderPods_JoinsErrors(t *testing.T) {
+	mockClient := NewMockClient()
+
+	// Create multiple reader pods
+	for i := 0; i < 3; i++ {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("reader-test-%d", i),
+				Namespace: "default",
+				Labels: map[string]string{
+					ReaderLabelKey: ReaderLabelValue,
+				},
 			},
-		},
-		Status: corev1.PodStatus{
-			Phase: corev1.PodFailed,
-		},
+		}
+		_, err := mockClient.Clientset().CoreV1().Pods("default").Create(
+			context.Background(), pod, metav1.CreateOptions{},
+		)
+		if err != nil {
+			t.Fatalf("failed to create pod: %v", err)
+		}
 	}
 
-	_, err := mockClient.Clientset().CoreV1().Pods("default").Create(
-		context.Background(),
-		pod,
-		metav1.CreateOptions{},
-	)
-	if err != nil {
-		t.Fatalf("failed to create test pod: %v", err)
+	// Make delete fail for all pods
+	mockClient.FakeClientset.PrependReactor("delete", "pods", func(action kubetesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("delete failed for %s", action.(kubetesting.DeleteAction).GetName())
+	})
+
+	err := mockClient.CleanupOrphanedReaderPods(context.Background(), "default")
+	if err == nil {
+		t.Fatal("expected error when all deletes fail, got nil")
 	}
 
-	// Verify we can detect the failed status
-	fetched, err := mockClient.Clientset().CoreV1().Pods("default").Get(
-		context.Background(),
-		"reader-failed-test",
-		metav1.GetOptions{},
-	)
-	if err != nil {
-		t.Fatalf("failed to get pod: %v", err)
-	}
-
-	if fetched.Status.Phase != corev1.PodFailed {
-		t.Errorf("pod phase = %q, want %q", fetched.Status.Phase, corev1.PodFailed)
+	// After the fix with errors.Join, the error should contain info about all failures.
+	// With the current code (lastErr pattern), only the last error is preserved.
+	// This test will pass after the fix: all 3 errors should be joined.
+	var joinedErrs interface{ Unwrap() []error }
+	if !errors.As(err, &joinedErrs) {
+		t.Errorf("expected joined errors (errors.Join), got: %v", err)
+	} else {
+		unwrapped := joinedErrs.Unwrap()
+		if len(unwrapped) != 3 {
+			t.Errorf("expected 3 joined errors, got %d: %v", len(unwrapped), err)
+		}
 	}
 }
 
