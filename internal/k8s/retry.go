@@ -67,7 +67,7 @@ func RetryOnTransient(ctx context.Context, name string, fn func() error) error {
 		klog.InfoS("Retrying K8s API call", "operation", name, "attempt", attempt+1, "error", lastErr)
 
 		// Apply jitter: backoff +/- jitterFraction
-		jitter := time.Duration(float64(backoff) * retryJitterFraction * (2*rand.Float64() - 1)) //nolint:gosec // G404: math/rand is appropriate for non-security retry jitter
+		jitter := time.Duration(float64(backoff) * retryJitterFraction * (2*rand.Float64() - 1)) // #nosec G404 -- math/rand is appropriate for non-security retry jitter
 		sleep := backoff + jitter
 
 		select {
