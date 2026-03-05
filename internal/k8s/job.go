@@ -140,15 +140,16 @@ func (c *Client) SubmitJob(ctx context.Context, job *batchv1.Job) error {
 		namespace = c.namespace
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	return RetryOnTransient(ctx, "SubmitJob", func() error {
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-	_, err := c.clientset.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to create Job: %w", err)
-	}
-
-	return nil
+		_, err := c.clientset.BatchV1().Jobs(namespace).Create(callCtx, job, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create Job: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetJobStatus retrieves the status of a Batch Job.
@@ -157,13 +158,21 @@ func (c *Client) GetJobStatus(ctx context.Context, namespace, name string) (*bat
 		namespace = c.namespace
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	var status *batchv1.JobStatus
+	err := RetryOnTransient(ctx, "GetJobStatus", func() error {
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-	job, err := c.clientset.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
+		job, err := c.clientset.BatchV1().Jobs(namespace).Get(callCtx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get Job %s/%s: %w", namespace, name, err)
+		}
+		status = &job.Status
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get Job %s/%s: %w", namespace, name, err)
+		return nil, err
 	}
 
-	return &job.Status, nil
+	return status, nil
 }

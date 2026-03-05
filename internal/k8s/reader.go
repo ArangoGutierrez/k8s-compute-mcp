@@ -156,16 +156,21 @@ func (c *Client) ReadArtifactHead(ctx context.Context, cfg ReadArtifactConfig) (
 		return nil, fmt.Errorf("failed to build reader pod: %w", err)
 	}
 
-	// Create the pod with a timeout
-	createCtx, createCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer createCancel()
+	// Create the pod with retry for transient errors (each attempt gets its own timeout)
+	var podName string
+	if err := RetryOnTransient(ctx, "CreateReaderPod", func() error {
+		createCtx, createCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer createCancel()
 
-	created, err := c.clientset.CoreV1().Pods(cfg.Namespace).Create(createCtx, pod, metav1.CreateOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create reader pod: %w", err)
+		created, err := c.clientset.CoreV1().Pods(cfg.Namespace).Create(createCtx, pod, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create reader pod: %w", err)
+		}
+		podName = created.Name
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-
-	podName := created.Name
 
 	// Ensure cleanup happens regardless of outcome
 	defer func() {
@@ -180,10 +185,17 @@ func (c *Client) ReadArtifactHead(ctx context.Context, cfg ReadArtifactConfig) (
 		return nil, err
 	}
 
-	// Check pod status for errors
-	finalPod, err := c.clientset.CoreV1().Pods(cfg.Namespace).Get(ctx, podName, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get reader pod status: %w", err)
+	// Check pod status for errors (with retry for transient API errors)
+	var finalPod *corev1.Pod
+	if err := RetryOnTransient(ctx, "GetReaderPodStatus", func() error {
+		p, err := c.clientset.CoreV1().Pods(cfg.Namespace).Get(ctx, podName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get reader pod status: %w", err)
+		}
+		finalPod = p
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	// Check if the pod failed
@@ -263,9 +275,11 @@ func (c *Client) getPodLogs(ctx context.Context, namespace, name string) (string
 	return buf.String(), nil
 }
 
-// deleteReaderPod deletes an ephemeral reader pod.
+// deleteReaderPod deletes an ephemeral reader pod with retry for transient errors.
 func (c *Client) deleteReaderPod(ctx context.Context, namespace, name string) error {
-	return c.clientset.CoreV1().Pods(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	return RetryOnTransient(ctx, "DeleteReaderPod", func() error {
+		return c.clientset.CoreV1().Pods(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	})
 }
 
 // countLines counts the number of lines in a string.
