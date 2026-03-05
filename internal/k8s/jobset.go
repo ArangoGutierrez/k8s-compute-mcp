@@ -202,15 +202,16 @@ func (c *Client) SubmitJobSet(ctx context.Context, jobset *unstructured.Unstruct
 		namespace = c.namespace
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	return RetryOnTransient(ctx, "SubmitJobSet", func() error {
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-	_, err := c.dynamicClient.Resource(JobSetGVR).Namespace(namespace).Create(ctx, jobset, metav1.CreateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to create JobSet: %w", err)
-	}
-
-	return nil
+		_, err := c.dynamicClient.Resource(JobSetGVR).Namespace(namespace).Create(callCtx, jobset, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create JobSet: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetJobSetStatus retrieves the status of a JobSet.
@@ -219,13 +220,21 @@ func (c *Client) GetJobSetStatus(ctx context.Context, namespace, name string) (s
 		namespace = c.namespace
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	var js *unstructured.Unstructured
+	err := RetryOnTransient(ctx, "GetJobSetStatus", func() error {
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-	jobset, err := c.dynamicClient.Resource(JobSetGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+		obj, err := c.dynamicClient.Resource(JobSetGVR).Namespace(namespace).Get(callCtx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get JobSet %s/%s: %w", namespace, name, err)
+		}
+		js = obj
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get JobSet %s/%s: %w", namespace, name, err)
+		return "", err
 	}
 
-	return extractConditionPhase(jobset.Object)
+	return extractConditionPhase(js.Object)
 }

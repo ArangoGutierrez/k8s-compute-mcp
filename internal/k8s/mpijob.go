@@ -278,15 +278,16 @@ func (c *Client) SubmitMPIJob(ctx context.Context, mpijob *unstructured.Unstruct
 		namespace = c.namespace
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	return RetryOnTransient(ctx, "SubmitMPIJob", func() error {
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-	_, err := c.dynamicClient.Resource(MPIJobGVR).Namespace(namespace).Create(ctx, mpijob, metav1.CreateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to create MPIJob: %w", err)
-	}
-
-	return nil
+		_, err := c.dynamicClient.Resource(MPIJobGVR).Namespace(namespace).Create(callCtx, mpijob, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create MPIJob: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetMPIJobStatus retrieves the status of an MPIJob.
@@ -295,12 +296,20 @@ func (c *Client) GetMPIJobStatus(ctx context.Context, namespace, name string) (s
 		namespace = c.namespace
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	var mpijob *unstructured.Unstructured
+	err := RetryOnTransient(ctx, "GetMPIJobStatus", func() error {
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-	mpijob, err := c.dynamicClient.Resource(MPIJobGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+		obj, err := c.dynamicClient.Resource(MPIJobGVR).Namespace(namespace).Get(callCtx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get MPIJob %s/%s: %w", namespace, name, err)
+		}
+		mpijob = obj
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get MPIJob %s/%s: %w", namespace, name, err)
+		return "", err
 	}
 
 	return extractConditionPhase(mpijob.Object)
