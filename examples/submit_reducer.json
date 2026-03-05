@@ -1,0 +1,30 @@
+{
+  "_comment": "Example JSON-RPC request/response for the submit_reducer tool",
+
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "submit_reducer",
+      "arguments": {
+        "script": "import glob, json, os\n\nmount = os.environ['MOUNT_PATH']\npattern = os.environ.get('INPUT_PATTERN', f'{mount}/results_*.json')\n\nestimates = []\nfor path in sorted(glob.glob(pattern)):\n    with open(path) as f:\n        data = json.load(f)\n        estimates.append(data['pi_estimate'])\n\npi_avg = sum(estimates) / len(estimates)\nprint(f'Averaged {len(estimates)} estimates: pi ~ {pi_avg:.6f}')\n\nwith open(f'{mount}/final_result.json', 'w') as f:\n    json.dump({'pi': pi_avg, 'num_estimates': len(estimates)}, f)\n",
+        "input_pattern": "/mnt/data/results_*.json",
+        "namespace": "compute"
+      }
+    }
+  },
+
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"job_id\":\"reduce-20260305-k3m4n\",\"job_type\":\"job\",\"namespace\":\"compute\",\"message\":\"Reducer Job 'reduce-20260305-k3m4n' submitted successfully with input pattern '/mnt/data/results_*.json'\"}"
+        }
+      ]
+    }
+  }
+}

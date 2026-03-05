@@ -1,0 +1,29 @@
+{
+  "_comment": "Example JSON-RPC request/response for the read_artifact_head tool",
+
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "read_artifact_head",
+      "arguments": {
+        "path": "/mnt/data/final_result.json",
+        "lines": 10
+      }
+    }
+  },
+
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"path\":\"/mnt/data/final_result.json\",\"content\":\"{\\\"pi\\\": 3.141587, \\\"num_estimates\\\": 10}\",\"lines\":1}"
+        }
+      ]
+    }
+  }
+}

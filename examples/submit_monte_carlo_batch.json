@@ -1,0 +1,30 @@
+{
+  "_comment": "Example JSON-RPC request/response for the submit_monte_carlo_batch tool",
+
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "submit_monte_carlo_batch",
+      "arguments": {
+        "script": "import os, json, random, math\n\nidx = os.environ['JOB_COMPLETION_INDEX']\nmount = os.environ['MOUNT_PATH']\n\nsamples = 1_000_000\ninside = sum(1 for _ in range(samples) if math.hypot(random.random(), random.random()) <= 1.0)\npi_est = 4.0 * inside / samples\n\nwith open(f'{mount}/results_{idx}.json', 'w') as f:\n    json.dump({'index': int(idx), 'samples': samples, 'pi_estimate': pi_est}, f)\n",
+        "replicas": 10,
+        "namespace": "compute"
+      }
+    }
+  },
+
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"job_id\":\"mc-20260305-x9y8z\",\"job_type\":\"jobset\",\"namespace\":\"compute\",\"message\":\"JobSet 'mc-20260305-x9y8z' submitted successfully with 10 parallel replicas. Use JOB_COMPLETION_INDEX env var for unique output paths.\"}"
+        }
+      ]
+    }
+  }
+}

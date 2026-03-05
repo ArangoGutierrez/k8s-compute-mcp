@@ -1,0 +1,31 @@
+{
+  "_comment": "Example JSON-RPC request/response for the submit_mpi_job tool",
+
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "submit_mpi_job",
+      "arguments": {
+        "code": "from mpi4py import MPI\nimport numpy as np\n\ncomm = MPI.COMM_WORLD\nrank = comm.Get_rank()\nsize = comm.Get_size()\n\nlocal = np.random.rand(1000)\ntotal = np.zeros(1) if rank == 0 else None\ncomm.Reduce(np.sum(local), total, op=MPI.SUM, root=0)\n\nif rank == 0:\n    print(f'Sum across {size} ranks: {total[0]}')\n",
+        "language": "python",
+        "nodes": 4,
+        "namespace": "compute"
+      }
+    }
+  },
+
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"job_id\":\"mpi-20260305-a1b2c\",\"job_type\":\"mpijob\",\"namespace\":\"compute\",\"message\":\"MPIJob 'mpi-20260305-a1b2c' submitted successfully with 4 worker nodes\"}"
+        }
+      ]
+    }
+  }
+}
