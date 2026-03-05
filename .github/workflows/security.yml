@@ -75,6 +75,8 @@ jobs:
           image-ref: 'k8s-compute-mcp:scan'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
 
       - name: Upload Trivy SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -117,7 +119,7 @@ jobs:
       - name: Run gosec
         uses: securego/gosec@v2.24.7
         with:
-          args: '-no-fail -fmt sarif -out gosec-results.sarif ./...'
+          args: '-fmt sarif -out gosec-results.sarif ./...'
 
       - name: Upload gosec SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
