@@ -5,8 +5,8 @@ package k8s
 
 import (
 	"context"
+	"strings"
 	"testing"
-	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -295,17 +295,15 @@ func TestGetJobSetStatus_NotFound(t *testing.T) {
 }
 
 func TestGetMPIJobStatus_Timeout(t *testing.T) {
-	// A canceled context should cause the Get call to fail
 	fakeDynamic := newFakeDynamicClientWithResources(MPIJobGVR)
 	client := &Client{
 		dynamicClient: fakeDynamic,
 		namespace:     "default",
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-	defer cancel()
-	// Let the timeout expire
-	time.Sleep(5 * time.Millisecond)
+	// Use immediate cancel for deterministic behavior on slow CI
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	_, err := client.GetMPIJobStatus(ctx, "default", "test-mpijob")
 	if err == nil {
@@ -320,12 +318,126 @@ func TestGetJobSetStatus_Timeout(t *testing.T) {
 		namespace:     "default",
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-	defer cancel()
-	time.Sleep(5 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	_, err := client.GetJobSetStatus(ctx, "default", "test-jobset")
 	if err == nil {
 		t.Fatal("expected error from canceled context, got nil")
+	}
+}
+
+func TestExtractConditionPhase_MalformedConditions(t *testing.T) {
+	tests := []struct {
+		name        string
+		conditions  []interface{}
+		wantPhase   string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "status field is non-string type",
+			conditions: []interface{}{
+				map[string]interface{}{
+					"type":   "Running",
+					"status": int64(123), // int64 (JSON number) instead of string
+				},
+			},
+			wantErr:     true,
+			errContains: "malformed condition at index 0: status field",
+		},
+		{
+			name: "type field is non-string type",
+			conditions: []interface{}{
+				map[string]interface{}{
+					"type":   float64(456), // float64 (JSON number) instead of string
+					"status": "True",
+				},
+			},
+			wantErr:     true,
+			errContains: "malformed condition at index 0: type field",
+		},
+		{
+			name: "condition entry is not a map",
+			conditions: []interface{}{
+				"not-a-map",
+			},
+			// Non-map entries are skipped, resulting in Pending
+			wantPhase: "Pending",
+		},
+		{
+			name: "condition missing status field skipped",
+			conditions: []interface{}{
+				map[string]interface{}{
+					"type": "Running",
+					// no "status" field
+				},
+			},
+			wantPhase: "Pending",
+		},
+		{
+			name: "condition missing type field skipped",
+			conditions: []interface{}{
+				map[string]interface{}{
+					"status": "True",
+					// no "type" field
+				},
+			},
+			wantPhase: "Pending",
+		},
+		{
+			name: "malformed entry after valid entry returns valid",
+			conditions: []interface{}{
+				map[string]interface{}{
+					"type":   "Running",
+					"status": "True",
+				},
+				"not-a-map", // skipped
+			},
+			// Iterates backward: skips "not-a-map", finds Running
+			wantPhase: "Running",
+		},
+		{
+			name: "malformed status on later entry errors before reaching valid earlier entry",
+			conditions: []interface{}{
+				map[string]interface{}{
+					"type":   "Running",
+					"status": "True",
+				},
+				map[string]interface{}{
+					"type":   "Failed",
+					"status": int64(999), // malformed, hit first during backward iteration
+				},
+			},
+			wantErr:     true,
+			errContains: "malformed condition at index 1: status field",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj := map[string]interface{}{
+				"status": map[string]interface{}{
+					"conditions": tt.conditions,
+				},
+			}
+
+			phase, err := extractConditionPhase(obj)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("error = %q, want containing %q", err.Error(), tt.errContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if phase != tt.wantPhase {
+				t.Errorf("phase = %q, want %q", phase, tt.wantPhase)
+			}
+		})
 	}
 }

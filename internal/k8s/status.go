@@ -4,6 +4,8 @@
 package k8s
 
 import (
+	"fmt"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -30,13 +32,22 @@ func extractConditionPhase(obj map[string]interface{}) (string, error) {
 			continue
 		}
 
-		status, _, _ := unstructured.NestedString(condition, "status")
-		if status == "True" {
-			condType, _, _ := unstructured.NestedString(condition, "type")
-			if condType != "" {
-				return condType, nil
-			}
+		status, found, err := unstructured.NestedString(condition, "status")
+		if err != nil {
+			return "", fmt.Errorf("malformed condition at index %d: status field: %w", i, err)
 		}
+		if !found || status != "True" {
+			continue
+		}
+
+		condType, found, err := unstructured.NestedString(condition, "type")
+		if err != nil {
+			return "", fmt.Errorf("malformed condition at index %d: type field: %w", i, err)
+		}
+		if !found || condType == "" {
+			continue
+		}
+		return condType, nil
 	}
 
 	// No condition with status "True" found

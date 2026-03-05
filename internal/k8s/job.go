@@ -132,6 +132,8 @@ func BuildReducerJob(cfg ReducerJobConfig) (*batchv1.Job, error) {
 }
 
 // SubmitJob applies a Batch Job manifest to the cluster.
+// The timeout is applied per-call so that retry wrappers can invoke this
+// method multiple times, each attempt getting its own 10s deadline.
 func (c *Client) SubmitJob(ctx context.Context, job *batchv1.Job) error {
 	namespace := job.Namespace
 	if namespace == "" {

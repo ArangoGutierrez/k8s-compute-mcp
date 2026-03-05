@@ -270,6 +270,8 @@ func toInterfaceSlice(ss []string) []interface{} {
 }
 
 // SubmitMPIJob applies an MPIJob manifest to the cluster.
+// The timeout is applied per-call so that retry wrappers can invoke this
+// method multiple times, each attempt getting its own 10s deadline.
 func (c *Client) SubmitMPIJob(ctx context.Context, mpijob *unstructured.Unstructured) error {
 	namespace := mpijob.GetNamespace()
 	if namespace == "" {

@@ -194,6 +194,8 @@ func BuildJobSet(cfg JobSetConfig) (*unstructured.Unstructured, error) {
 }
 
 // SubmitJobSet applies a JobSet manifest to the cluster.
+// The timeout is applied per-call so that retry wrappers can invoke this
+// method multiple times, each attempt getting its own 10s deadline.
 func (c *Client) SubmitJobSet(ctx context.Context, jobset *unstructured.Unstructured) error {
 	namespace := jobset.GetNamespace()
 	if namespace == "" {
