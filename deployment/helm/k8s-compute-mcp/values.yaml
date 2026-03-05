@@ -55,6 +55,23 @@ resources:
   limits:
     memory: 256Mi
 
+service:
+  metricsPort: 8080
+
+probes:
+  liveness:
+    httpGet:
+      path: /healthz
+      port: metrics
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    httpGet:
+      path: /readyz
+      port: metrics
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
 nodeSelector: {}
 
 tolerations: []
