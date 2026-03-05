@@ -47,27 +47,35 @@ k8s-compute-mcp/
 │   └── server/           # Main entry point
 │       └── main.go
 ├── internal/
-│   ├── k8s/              # Kubernetes client and manifest generation
+│   ├── info/             # Build version info
+│   │   └── info.go
+│   ├── k8s/              # Kubernetes client, manifests, retry, status
 │   │   ├── client.go     # client-go setup (out-of-cluster)
 │   │   ├── mpijob.go     # MPIJob manifest builder
 │   │   ├── jobset.go     # JobSet manifest builder
-│   │   └── job.go        # Batch Job manifest builder
+│   │   ├── job.go        # Batch Job manifest builder
+│   │   ├── reader.go     # Ephemeral pod artifact reader
+│   │   ├── retry.go      # Exponential backoff with jitter
+│   │   └── status.go     # Job phase extraction
 │   └── mcp/              # MCP protocol handling
-│       ├── server.go     # MCP server setup
-│       ├── tools.go      # Tool registration
-│       └── handlers.go   # Tool handlers
+│       ├── server.go     # MCP server setup & tool registration
+│       ├── tools.go      # Tool definitions & schemas
+│       ├── handlers.go   # Tool handlers
+│       ├── health.go     # /healthz, /readyz, /metrics HTTP server
+│       └── metrics.go    # Prometheus instrumentation
 ├── pkg/
 │   └── prompts/          # MCP prompt templates
 ├── deployment/
-│   └── helm/             # Helm chart (only Helm, no Kustomize)
-├── manifests/            # Example CRDs for reference
-├── examples/             # Example MCP requests (JSON-RPC)
-├── docs/                 # Documentation
+│   ├── Dockerfile        # Multi-stage production image
+│   ├── Dockerfile.goreleaser # GoReleaser-optimized image
+│   └── helm/             # Helm chart (RBAC, probes, metrics)
 ├── test/
-│   └── e2e/              # End-to-end tests
+│   └── e2e/              # E2E tests (Ginkgo + KIND)
+│       ├── fixtures/     # Python test scripts
+│       └── testdata/     # KIND config, PV/PVC YAML
 ├── .github/
 │   ├── ISSUE_TEMPLATE/   # Issue templates
-│   ├── workflows/        # CI/CD
+│   ├── workflows/        # ci.yml, e2e.yml, release.yml, security.yml
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── AGENTS.md             # This file
 ├── CONTRIBUTING.md
@@ -151,15 +159,21 @@ func BuildMPIJob(name string, replicas int, code string) *mpiv2beta1.MPIJob {
 - [x] Batch Job manifest builder - `internal/k8s/job.go` (Issue #8)
 - [x] All tools registered in MCP server (Issue #14)
 
-### Phase 3: Deployment
-- [ ] Dockerfile (multi-stage build)
-- [ ] Helm chart
-- [ ] Example manifests
-- [ ] CI/CD workflows
+### Phase 3: Deployment & Production Hardening (COMPLETE)
+- [x] Multi-stage Dockerfile (Issue #15, PR #44)
+- [x] Helm chart with RBAC, probes, metrics (Issue #16, PRs #44, #50)
+- [x] CI/CD workflow — lint, test, vet (Issue #5)
+- [x] Security hardening — input validation, shell injection fix, RBAC (PRs #44-#46)
+- [x] Observability — Prometheus metrics, structured logging, health endpoints (PRs #47-#49)
+- [x] Retry with exponential backoff for transient K8s errors (PR #53)
+- [x] Status phase extraction and API timeouts (PR #51)
+- [x] Code size cap and ActiveJobs gauge (PR #54)
+- [x] E2E testing framework with KIND (Issue #22, PR #57)
+- [x] GoReleaser release workflow (Issue #20, PR #55)
+- [x] Security scanning — gosec, Trivy, SBOM (Issue #21, PR #56)
+- [x] Configurable resource requests for all workloads (Issue #23)
 
 ### Future Enhancements
-- [ ] E2E testing with KIND/minikube (Issue #22)
-- [ ] Configurable resource requests (CPU/memory/GPU) (Issue #23)
 - [ ] GPU workload support (CUDA, NCCL) (Issue #24)
 
 ## Testing Strategy
@@ -180,12 +194,14 @@ func BuildMPIJob(name string, replicas int, code string) *mpiv2beta1.MPIJob {
 
 ```go
 require (
-    github.com/mark3labs/mcp-go v0.43.2      // MCP protocol
-    k8s.io/api v0.35.0                        // K8s core types
-    k8s.io/apimachinery v0.35.0               // K8s utilities
-    k8s.io/client-go v0.35.0                  // K8s client
-    github.com/kubeflow/mpi-operator          // MPIJob types
-    sigs.k8s.io/jobset                        // JobSet types
+    github.com/mark3labs/mcp-go v0.44.0       // MCP protocol
+    github.com/prometheus/client_golang v1.23.2 // Prometheus metrics
+    k8s.io/api v0.35.1                        // K8s core types
+    k8s.io/apimachinery v0.35.1               // K8s utilities
+    k8s.io/client-go v0.35.1                  // K8s client
+    k8s.io/klog/v2                            // Structured logging
+    github.com/onsi/ginkgo/v2                 // E2E test framework (test only)
+    github.com/onsi/gomega                    // E2E assertions (test only)
 )
 ```
 
@@ -216,8 +232,8 @@ GPU workloads require RuntimeClass configuration:
 - Node selectors for GPU nodes
 
 ### Related Issues
-- #22: E2E testing framework with KIND/minikube
-- #23: Configurable resource requests
+- #22: E2E testing framework with KIND (COMPLETE - PR #57)
+- #23: Configurable resource requests (COMPLETE)
 - #24: GPU workload support (CUDA, NCCL)
 
 ## Common Agent Tasks
@@ -284,50 +300,59 @@ cat examples/submit_mpi.json | ./bin/server
 
 ## Current Status
 
-**Phase 1 (Foundation)**: COMPLETE  
-**Phase 2 (Core Tools)**: COMPLETE  
-**Phase 3 (Deployment)**: NOT STARTED
+**Phase 1 (Foundation)**: COMPLETE
+**Phase 2 (Core Tools)**: COMPLETE
+**Phase 3 (Deployment & Hardening)**: COMPLETE
 
-### Completed Issues (Phase 1 & 2)
-| Issue | Title | Status |
-|-------|-------|--------|
-| #1 | Go module initialized, directory structure | ✅ Complete |
-| #2 | Makefile with standard Go targets | ✅ Complete |
-| #3 | K8s client with context selection | ✅ Complete |
-| #4 | MCP server skeleton (stdio transport) | ✅ Complete |
-| #6 | MPIJob manifest builder | ✅ Complete |
-| #7 | JobSet manifest builder | ✅ Complete |
-| #8 | Batch Job manifest builder | ✅ Complete |
-| #9 | `submit_mpi_job` tool handler | ✅ Complete |
-| #10 | `submit_monte_carlo_batch` tool handler | ✅ Complete |
-| #11 | `submit_reducer` tool handler | ✅ Complete |
-| #12 | `check_status` tool handler | ✅ Complete |
-| #13 | `read_artifact_head` with ephemeral pod | ✅ Complete |
-| #14 | Register all tools in MCP server | ✅ Complete |
+### Completed Issues (Phase 1, 2 & 3)
+| Issue/PR | Title | Status |
+|----------|-------|--------|
+| #1 | Go module initialized, directory structure | Complete |
+| #2 | Makefile with standard Go targets | Complete |
+| #3 | K8s client with context selection | Complete |
+| #4 | MCP server skeleton (stdio transport) | Complete |
+| #6 | MPIJob manifest builder | Complete |
+| #7 | JobSet manifest builder | Complete |
+| #8 | Batch Job manifest builder | Complete |
+| #9 | `submit_mpi_job` tool handler | Complete |
+| #10 | `submit_monte_carlo_batch` tool handler | Complete |
+| #11 | `submit_reducer` tool handler | Complete |
+| #12 | `check_status` tool handler | Complete |
+| #13 | `read_artifact_head` with ephemeral pod | Complete |
+| #14 | Register all tools in MCP server | Complete |
+| #44 | Security: Helm security context, namespace-scoped RBAC (P0) | Complete |
+| #45 | Security: input validation and reader security (P0) | Complete |
+| #46 | Security: C++ shell injection fix, goroutine leak (P0) | Complete |
+| #47 | Observability: health endpoints and HTTP server (P1) | Complete |
+| #48 | Observability: structured logging with klog/v2 (P1) | Complete |
+| #49 | Observability: Prometheus metrics instrumentation (P1) | Complete |
+| #50 | Helm: health probes, metrics port, Prometheus annotations (P1) | Complete |
+| #51 | Status phase extraction and API timeouts (P1) | Complete |
+| #52 | ReadArtifactHead tests, prompts coverage, error context (P1) | Complete |
+| #53 | Retry with exponential backoff for transient API errors (P1) | Complete |
+| #54 | Code size cap and ActiveJobs gauge (P1) | Complete |
+| #55 | GoReleaser release workflow (P2) | Complete |
+| #56 | Security scanning workflow (P2) | Complete |
+| #57 | E2E testing framework with KIND (P2) | Complete |
 
 ### Implementation Summary
 - **K8s Client**: `internal/k8s/client.go` - Out-of-cluster config, context selection
 - **Manifest Builders**: `internal/k8s/{mpijob,jobset,job,reader}.go`
-- **MCP Server**: `internal/mcp/server.go` - 5 tools registered with type-safe schemas
+- **Retry**: `internal/k8s/retry.go` - Exponential backoff with jitter for transient errors
+- **Status**: `internal/k8s/status.go` - Job phase extraction with timeouts
+- **MCP Server**: `internal/mcp/server.go` - 5 tools with type-safe schemas, code size validation
 - **Handlers**: `internal/mcp/handlers.go` - Non-blocking submissions, status queries
-- **Test Coverage**: >64% (handlers at 84.8%, manifest builders well-tested)
+- **Health**: `internal/mcp/health.go` - `/healthz`, `/readyz`, `/metrics` HTTP server
+- **Metrics**: `internal/mcp/metrics.go` - Prometheus counters, histograms, gauges
+- **E2E Tests**: `test/e2e/` - Ginkgo/Gomega with KIND cluster lifecycle
+- **CI/CD**: ci.yml (lint/test), e2e.yml (nightly), release.yml (GoReleaser), security.yml (gosec/Trivy)
 
-### Open Issues Summary (Phase 3 + Enhancements)
+### Open Issues (Future Enhancements)
 | Issue | Title | Priority |
 |-------|-------|----------|
-| #5 | CI workflow | P1 |
-| #15 | Multi-stage Dockerfile | P1 |
-| #16 | Helm chart | P1 |
-| #17 | Example CRD manifests | P2 |
-| #18 | Example MCP requests | P2 |
-| #19 | MCP prompt templates | P2 |
-| #20 | Release workflow (GoReleaser) | P2 |
-| #21 | Security scanning | P2 |
-| #22 | E2E testing with KIND | P1 |
-| #23 | Configurable resources | P1 |
-| #24 | GPU workload support | P1 |
+| #24 | GPU workload support (CUDA, NCCL) | P1 |
 
 ---
 
-**Last Updated**: 2026-01-24  
+**Last Updated**: 2026-03-05
 **Maintainer**: [@ArangoGutierrez](https://github.com/ArangoGutierrez)

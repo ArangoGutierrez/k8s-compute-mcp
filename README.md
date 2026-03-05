@@ -17,6 +17,11 @@ Go Version License
 - **Result Aggregation** - Submit reducer jobs to aggregate computation results
 - **Status Monitoring** - Query job/workload status in real-time
 - **Artifact Access** - Read computation results directly from shared storage
+- **Observability** - Prometheus metrics, structured logging, health/readiness probes
+- **Reliability** - Retry with exponential backoff, input validation, code size limits
+- **E2E Testing** - Ginkgo/Gomega framework with KIND cluster lifecycle
+- **Security** - gosec scanning, Trivy container analysis, SBOM generation
+- **Releases** - GoReleaser with multi-platform binaries and container images
 
 ---
 
@@ -179,21 +184,37 @@ make build      # Build binary
 make test       # Run tests
 make lint       # Run linter
 make image      # Build container image
+make test-e2e   # Run E2E tests (requires kind, helm, kubectl)
 ```
 
 ### Project Structure
 
 ```
 k8s-compute-mcp/
-├── cmd/server/         # Main entry point
+├── cmd/server/              # Main entry point
 ├── internal/
-│   ├── k8s/            # Kubernetes client & manifest generation
-│   └── mcp/            # MCP protocol handling
-├── pkg/prompts/        # MCP prompt templates
-├── deployment/helm/    # Helm chart
-├── manifests/          # Example CRDs
-├── examples/           # Example MCP requests
-└── docs/               # Documentation
+│   ├── k8s/                 # Kubernetes client, manifests, retry, status
+│   │   ├── client.go        # client-go setup (out-of-cluster)
+│   │   ├── mpijob.go        # MPIJob manifest builder
+│   │   ├── jobset.go        # JobSet manifest builder
+│   │   ├── job.go           # Batch Job manifest builder
+│   │   ├── reader.go        # Ephemeral pod artifact reader
+│   │   ├── retry.go         # Exponential backoff with jitter
+│   │   └── status.go        # Job phase extraction
+│   ├── mcp/                 # MCP protocol handling
+│   │   ├── server.go        # Server setup & tool registration
+│   │   ├── handlers.go      # Tool handlers
+│   │   ├── tools.go         # Tool definitions & schemas
+│   │   ├── health.go        # /healthz, /readyz, /metrics endpoints
+│   │   └── metrics.go       # Prometheus instrumentation
+│   └── info/                # Build version info
+├── pkg/prompts/             # MCP prompt templates
+├── deployment/
+│   ├── Dockerfile           # Multi-stage production image
+│   ├── Dockerfile.goreleaser # GoReleaser-optimized image
+│   └── helm/                # Helm chart
+├── test/e2e/                # E2E tests (Ginkgo + KIND)
+└── .github/workflows/       # CI, E2E, release, security
 ```
 
 ---
@@ -234,25 +255,53 @@ LLM → k8s-compute-mcp → submit_monte_carlo_batch(replicas=500)
 
 ---
 
+## Observability
+
+The server exposes an HTTP endpoint (default `:8081`) for health checks and metrics:
+
+| Endpoint | Description |
+|----------|-------------|
+| `/healthz` | Liveness probe (always returns 200) |
+| `/readyz` | Readiness probe (checks K8s connectivity) |
+| `/metrics` | Prometheus metrics |
+
+### Prometheus Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `mcp_tool_requests_total` | Counter | Total tool invocations by tool name and status |
+| `mcp_tool_errors_total` | Counter | Tool errors by tool name and error type |
+| `mcp_tool_duration_seconds` | Histogram | Tool call latency distribution |
+| `mcp_active_jobs` | Gauge | Currently tracked active jobs |
+
+### Reliability
+
+- **Retry with backoff**: Transient K8s API errors (429, 5xx, timeouts) are retried with exponential backoff and jitter
+- **Input validation**: Code size limits, argument validation at tool boundaries
+- **Structured logging**: klog/v2 with key-value pairs to stderr (stdout reserved for MCP protocol)
+
+---
+
 ## Project Status
 
-**Current Phase:** Phase 3 - Deployment
+**Current Phase:** All core phases complete
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | Phase 1 | **Complete** | Repository setup, K8s client, MCP skeleton |
 | Phase 2 | **Complete** | All 5 core tools implemented and tested |
-| Phase 3 | In Progress | Deployment, Helm chart, CI/CD |
+| Phase 3 | **Complete** | Dockerfile, Helm chart, CI/CD, security, observability |
 
-### Implemented Tools
-All 5 MCP tools are fully functional:
-- `submit_mpi_job` - MPIJob submission via Kubeflow MPI Operator
-- `submit_monte_carlo_batch` - Parallel simulations via JobSet
-- `submit_reducer` - Result aggregation via Batch Job
-- `check_status` - Real-time job status queries
-- `read_artifact_head` - File reading via ephemeral pods
+### What's Included
 
-See [Issues](https://github.com/ArangoGutierrez/k8s-compute-mcp/issues) for detailed roadmap.
+- **5 MCP tools**: submit_mpi_job, submit_monte_carlo_batch, submit_reducer, check_status, read_artifact_head
+- **Production deployment**: Multi-stage Dockerfile, Helm chart with RBAC/probes/metrics
+- **CI/CD**: Lint/test/vet on every PR, GoReleaser releases, security scanning (gosec + Trivy)
+- **E2E testing**: Ginkgo framework with KIND cluster lifecycle (nightly)
+- **Observability**: Prometheus metrics, structured logging, health/readiness endpoints
+- **Reliability**: Retry with exponential backoff, input validation, code size caps
+
+See [Issues](https://github.com/ArangoGutierrez/k8s-compute-mcp/issues) for future enhancements.
 
 ---
 
