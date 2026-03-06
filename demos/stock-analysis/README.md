@@ -182,6 +182,22 @@ The LLM autonomously:
 
 All scripts run in Python 3.11 containers with access to the standard library. Results are stored on a shared PVC at `/mnt/data/`.
 
+## Scaling with Your Cluster
+
+The cluster is the compute engine — a bigger cluster means faster and more precise results:
+
+| Cluster Size | Monte Carlo Replicas | Total Paths | Wall-Clock Time | Precision |
+|-------------|---------------------|-------------|-----------------|-----------|
+| 3 workers (t3.medium) | 10 | 100K | ~30s | Good |
+| 10 workers | 100 | 1M | ~30s | High |
+| 50 workers (GPU-enabled) | 500 | 5M+ | ~30s | Very high |
+
+**Why it scales linearly:** Each Monte Carlo replica is an independent Kubernetes Job. Adding more replicas doesn't increase wall-clock time — they all run in parallel. More paths means lower variance in VaR, Sharpe, and drawdown estimates (precision improves with √N).
+
+**GPU acceleration:** With GPU-enabled nodes, the LLM can write CUDA/NumPy scripts that run simulations orders of magnitude faster per replica. A single GPU replica can simulate millions of paths in seconds.
+
+**MPI for large-scale jobs:** For workloads that benefit from inter-node communication (e.g., large matrix operations, correlated simulations across assets), use `submit_mpi_job` to distribute work across multiple nodes with MPI.
+
 ## Customize
 
 Change the stock, add more dimensions, or go deeper on any axis:
