@@ -1,8 +1,8 @@
 # Stock Analysis with k8s-compute-mcp
 
-Run quantitative stock analysis on Kubernetes — driven entirely by your LLM.
+Run a comprehensive 360° stock analysis on Kubernetes — driven entirely by your LLM.
 
-This demo walks you through deploying **k8s-compute-mcp** to any Kubernetes cluster and using it to run Monte Carlo simulations, Fibonacci technical analysis, and aggregated reports for NVIDIA (NVDA) stock. Works with Claude Desktop, Claude Code, Cursor, Gemini CLI, or any MCP-compatible client.
+Give your LLM access to a Kubernetes compute cluster via **k8s-compute-mcp**, then ask it to analyze any stock. The LLM designs the analysis, writes the computation scripts, submits them to the cluster, and interprets the results — all autonomously.
 
 ## Prerequisites
 
@@ -119,111 +119,80 @@ Add to `.cursor/mcp.json`:
 k8s-compute-mcp  # speaks JSON-RPC 2.0 over stdin/stdout
 ```
 
-## Example: NVIDIA Stock Analysis
+## Example: NVIDIA 360° Stock Analysis
 
 Paste this prompt into your LLM:
 
-> Analyze NVIDIA (NVDA) stock using the Kubernetes compute cluster.
+> Perform a comprehensive 360° analysis of NVIDIA (NVDA) stock using the Kubernetes
+> compute cluster. You have full autonomy to design and execute the analysis — write
+> your own Python scripts, choose your models, and decide how many parallel replicas
+> to run.
 >
-> 1. Run a Monte Carlo simulation of NVDA stock price using Geometric Brownian Motion.
->    Current price: $130, annual drift: 15%, volatility: 45%, 252 trading days, 100 parallel replicas.
->    Use `submit_monte_carlo_batch` with the simulation script at `demos/stock-analysis/scripts/monte_carlo_gbm.py`.
+> Your analysis should cover:
 >
-> 2. Calculate Fibonacci retracement levels between the 52-week high ($150) and low ($100).
->    Submit as a single batch job using `submit_reducer` with the script at `demos/stock-analysis/scripts/fibonacci_levels.py`.
+> **Quantitative**
+> - Monte Carlo price simulation (GBM or a model of your choice) with parallel replicas
+> - Technical indicators: Fibonacci retracement/extension levels, moving average crossovers,
+>   RSI, or any other indicators you find relevant
+> - Risk metrics: Value at Risk (VaR), max drawdown, Sharpe ratio estimates
 >
-> 3. Aggregate all results into a final analysis report using `submit_reducer` with `demos/stock-analysis/scripts/aggregate_report.py`.
+> **Geopolitical & Geoeconomic**
+> - Factor in US-China semiconductor export controls and their impact on NVDA revenue
+> - Consider the CHIPS Act subsidies and their effect on domestic production costs
+> - Account for Taiwan Strait risk and its impact on TSMC supply chain (NVDA's primary fab partner)
+> - Evaluate the AI regulation landscape across US, EU, and China
 >
-> 4. Read the final report with `read_artifact_head`.
+> **Macro & Sector**
+> - Interest rate sensitivity: how does Fed policy affect growth stock valuations like NVDA?
+> - AI capex cycle: analyze hyperscaler (MSFT, GOOGL, AMZN, META) spending trends on GPUs
+> - Competitive landscape: AMD MI300, Intel Gaudi, custom silicon (Google TPU, Amazon Trainium)
+> - Data center energy constraints and their impact on GPU deployment at scale
 >
-> After each submission, poll `check_status` until the job completes before proceeding.
+> **Workflow:**
+> 1. Write Python scripts for each computation you want to run
+> 2. Use `submit_monte_carlo_batch` for parallel simulations (100 replicas recommended)
+> 3. Use `submit_reducer` for single-job computations (Fibonacci, risk metrics, etc.)
+> 4. Use `check_status` to poll each job until completion
+> 5. Use `submit_reducer` to aggregate all results into a final report
+> 6. Use `read_artifact_head` to retrieve the report
+> 7. Provide your interpretation: bull case, bear case, and base case with price targets
+>
+> Current NVDA price: ~$130. 52-week range: $100–$150.
+> Be creative. Use as many parallel compute jobs as you need.
 
-### What the LLM Does
+### What Happens
 
-The LLM reads the Python scripts and submits them to your cluster via MCP tool calls:
+The LLM autonomously:
 
-**Step 1 — Monte Carlo simulation** (`submit_monte_carlo_batch`):
-- Submits 100 parallel replicas as a Kubernetes JobSet
-- Each replica runs 10,000 GBM simulation paths
-- Results written to `/mnt/data/monte-carlo-{0..99}/result.json` on the shared PVC
+1. **Designs the analysis** — decides which models and metrics to compute
+2. **Writes Python scripts** — creates its own simulation and analysis code on the fly
+3. **Submits to Kubernetes** — sends scripts to the cluster via MCP tools for parallel execution
+4. **Aggregates results** — combines outputs from all computations into a unified report
+5. **Interprets findings** — synthesizes quantitative data with geopolitical/macro context into actionable insight
 
-**Step 2 — Fibonacci levels** (`submit_reducer`):
-- Submits a single Job computing retracement and extension levels
-- Results written to `/mnt/data/fibonacci/levels.json`
+### Available MCP Tools
 
-**Step 3 — Aggregate** (`submit_reducer`):
-- Reads all Monte Carlo results + Fibonacci levels
-- Produces combined report at `/mnt/data/analysis-report.json`
+| Tool | Purpose |
+|------|---------|
+| `submit_monte_carlo_batch` | Run parallel simulations as a Kubernetes JobSet (e.g., 100 replicas each running 10K paths) |
+| `submit_mpi_job` | Submit distributed MPI workloads (matrix operations, large-scale simulations) |
+| `submit_reducer` | Submit a single job to process/aggregate data on the shared PVC |
+| `check_status` | Poll job status until completion |
+| `read_artifact_head` | Read results from the shared PVC back to the LLM |
 
-**Step 4 — Read results** (`read_artifact_head`):
-- Returns the JSON report directly to the LLM for interpretation
-
-### Understanding the Results
-
-The final report includes:
-
-| Section | Key Metrics |
-|---------|------------|
-| **Monte Carlo** | Mean/median price, 5th-95th percentile range, probability of reaching $200, average max drawdown |
-| **Fibonacci** | Retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%), extension targets (161.8%, 261.8%) |
-| **Combined** | Which Fibonacci levels fall within the Monte Carlo price range — potential support/resistance zones |
-
-<details>
-<summary>Example output (click to expand)</summary>
-
-```json
-{
-  "stock": "NVDA",
-  "analysis_type": "quantitative",
-  "monte_carlo": {
-    "replicas": 100,
-    "total_paths": 1000000,
-    "mean_final_price": 151.23,
-    "confidence_interval_95": [149.85, 152.61],
-    "percentile_5_avg": 64.18,
-    "percentile_95_avg": 287.42,
-    "prob_above_200": 0.1952,
-    "avg_max_drawdown": 0.3871
-  },
-  "fibonacci": {
-    "retracement_levels": {
-      "23.6%": 138.20,
-      "38.2%": 130.90,
-      "50.0%": 125.00,
-      "61.8%": 119.10
-    },
-    "key_support": [119.10, 125.00, 130.90],
-    "key_resistance": [180.90, 230.90]
-  },
-  "combined_analysis": {
-    "fibonacci_levels_in_mc_range": {
-      "23.6%": 138.20,
-      "38.2%": 130.90,
-      "50.0%": 125.00,
-      "61.8%": 119.10,
-      "161.8%": 180.90,
-      "261.8%": 230.90
-    },
-    "interpretation": "Monte Carlo simulations suggest NVDA price between $64.18 and $287.42 (5th-95th percentile) over 1 year. 6 Fibonacci levels fall within this range, suggesting potential support/resistance zones."
-  }
-}
-```
-
-</details>
+All scripts run in Python 3.11 containers with access to the standard library. Results are stored on a shared PVC at `/mnt/data/`.
 
 ## Customize
 
-Modify the Python scripts for different stocks:
+Change the stock, add more dimensions, or go deeper on any axis:
 
-| Parameter | File | Default | Description |
-|-----------|------|---------|-------------|
-| `S0` | `monte_carlo_gbm.py` | 130.0 | Current stock price |
-| `MU` | `monte_carlo_gbm.py` | 0.15 | Annual drift (expected return) |
-| `SIGMA` | `monte_carlo_gbm.py` | 0.45 | Annual volatility |
-| `HIGH` | `fibonacci_levels.py` | 150.0 | 52-week high |
-| `LOW` | `fibonacci_levels.py` | 100.0 | 52-week low |
+- **Different stock**: Replace NVDA references with any ticker and adjust price/range
+- **Different models**: Ask for jump-diffusion, Heston stochastic volatility, or GARCH
+- **More replicas**: Increase parallel jobs for higher statistical precision
+- **Different focus**: Emphasize ESG factors, supply chain risk, or earnings momentum
+- **Multiple stocks**: Run comparative analysis across a sector (NVDA vs AMD vs INTC)
 
-For more complex models (jump diffusion, Heston stochastic volatility), replace the simulation logic in `monte_carlo_gbm.py` — the MCP pipeline stays the same.
+The LLM decides what to compute — you decide what to ask.
 
 ## Provision a Cluster with Holodeck
 
