@@ -4,6 +4,27 @@ Run a comprehensive 360° stock analysis on Kubernetes — driven entirely by yo
 
 Give your LLM access to a Kubernetes compute cluster via **k8s-compute-mcp**, then ask it to analyze any stock. The LLM designs the analysis, writes the computation scripts, submits them to the cluster, and interprets the results — all autonomously.
 
+## Why Not Just Use ChatGPT / Gemini / Claude Directly?
+
+LLM providers offer built-in code execution (Code Interpreter, Gemini Code Execution, Claude Analysis), but they run in **sandboxed single-container environments** with hard limits:
+
+| | Provider Sandbox | k8s-compute-mcp |
+|---|---|---|
+| **Parallelism** | 1 script at a time | 100s of replicas across your cluster |
+| **Compute** | ~1 CPU, limited RAM, 30-60s timeout | Your cluster defines the limits |
+| **GPUs** | None | Use GPU nodes for CUDA-accelerated simulations |
+| **Storage** | Ephemeral, lost between runs | Persistent shared PVC for multi-stage pipelines |
+| **Distributed computing** | Not available | MPI across nodes for correlated simulations |
+| **Data sovereignty** | Runs on provider infrastructure | Runs on your cluster, your data stays yours |
+
+**Example — Monte Carlo simulation at scale:**
+
+- **Provider sandbox:** 1 × 10K paths = 10K simulations, sequential, ~15s
+- **3-node cluster:** 10 replicas × 10K paths = 100K simulations, parallel, ~30s
+- **50-node cluster:** 500 replicas × 100K paths = 50M simulations, parallel, ~30s
+
+That's up to **5000× more simulations** in roughly the same wall-clock time. More paths means statistically tighter confidence intervals on VaR, Sharpe ratios, and price distributions — the difference between a rough estimate and a production-grade risk model.
+
 ## Prerequisites
 
 - **Kubernetes cluster** — any provider (AWS, GKE, EKS, on-prem, or [Holodeck](#provision-a-cluster-with-holodeck))
