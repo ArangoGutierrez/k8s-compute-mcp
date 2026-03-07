@@ -1,0 +1,44 @@
+# holodeck-env.yaml — Provision a CPU-only Kubernetes cluster for stock analysis.
+#
+# Usage:
+#   export AWS_KEY_NAME=your-key-pair
+#   export AWS_PRIVATE_KEY_PATH=~/.ssh/your-key.pem
+#   holodeck create -f demos/stock-analysis/holodeck-env.yaml --provision -k ./kubeconfig.yaml
+#
+# Cleanup:
+#   holodeck list
+#   holodeck delete <instance-id>
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: stock-analysis-cluster
+  description: "CPU-only cluster for k8s-compute-mcp stock analysis demo (1 CP + 3 workers)"
+spec:
+  provider: aws
+  auth:
+    keyName: ${AWS_KEY_NAME}
+    privateKey: ${AWS_PRIVATE_KEY_PATH}
+
+  cluster:
+    region: us-west-2
+    controlPlane:
+      count: 1
+      instanceType: t3.medium
+      dedicated: false
+    workers:
+      count: 3
+      instanceType: t3.medium
+
+  nvidiaDriver:
+    install: false
+  nvidiaContainerToolkit:
+    install: false
+
+  containerRuntime:
+    install: true
+    name: containerd
+
+  kubernetes:
+    install: true
+    installer: kubeadm
