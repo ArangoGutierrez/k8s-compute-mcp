@@ -21,7 +21,7 @@ spec:
     privateKey: ${AWS_PRIVATE_KEY_PATH}
 
   cluster:
-    region: us-east-1
+    region: us-west-2
     controlPlane:
       count: 1
       instanceType: t3.medium

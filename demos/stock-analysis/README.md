@@ -30,7 +30,7 @@ That's up to **5000× more simulations** in roughly the same wall-clock time. Mo
 - **Kubernetes cluster** — any provider (AWS, GKE, EKS, on-prem, or [Holodeck](#provision-a-cluster-with-holodeck))
 - **kubectl** configured with cluster access
 - **helm** v3+
-- **Go** 1.23+ (to build the MCP server)
+- **Go** 1.26+ (to build the MCP server)
 - An **MCP-compatible LLM client** (Claude Desktop, Claude Code, Cursor, Gemini CLI)
 
 ## Quick Start
@@ -84,7 +84,7 @@ make build
 kubectl get pods -l app=k8s-compute-mcp
 
 # Test the health endpoint (port-forward if needed)
-kubectl port-forward svc/k8s-compute-mcp 8080:8080 &
+kubectl port-forward deploy/k8s-compute-mcp 8080:8080 &
 curl http://localhost:8080/healthz
 ```
 

@@ -17,6 +17,7 @@
 set -euo pipefail
 
 KUEUE_NAMESPACE="kueue-system"
+KUEUE_VERSION="v0.12.2"
 MPI_OPERATOR_VERSION="v0.7.0"
 JOBSET_VERSION="v0.6.0"
 PVC_NAME="${PVC_NAME:-compute-data}"
@@ -47,9 +48,10 @@ echo ""
 if helm list -n "$KUEUE_NAMESPACE" 2>/dev/null | grep -q kueue; then
   echo "[OK] Kueue already installed"
 else
-  echo "Installing Kueue..."
+  echo "Installing Kueue ${KUEUE_VERSION}..."
   helm install kueue \
     oci://registry.k8s.io/kueue/charts/kueue \
+    --version "$KUEUE_VERSION" \
     --namespace "$KUEUE_NAMESPACE" \
     --create-namespace \
     --wait \
@@ -139,7 +141,7 @@ spec:
 PVC_EOF
   echo "Waiting for PVC to bind..."
   kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/"$PVC_NAME" -n default --timeout=60s || \
-    echo "WARNING: PVC not yet bound (may need a StorageClass that supports RWX)"
+    echo "WARNING: PVC not yet bound — RWX requires an RWX-capable StorageClass (e.g., EFS CSI on EKS, NFS, or hostPath for dev)"
   echo "[OK] PVC created"
 fi
 
