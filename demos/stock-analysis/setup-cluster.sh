@@ -23,6 +23,12 @@ PVC_NAME="${PVC_NAME:-compute-data}"
 PVC_SIZE="${PVC_SIZE:-10Gi}"
 SKIP_MPI="${1:-}"
 
+if [ -n "$SKIP_MPI" ] && [ "$SKIP_MPI" != "--skip-mpi" ]; then
+  echo "ERROR: Unknown argument '$SKIP_MPI'"
+  echo "Usage: $0 [--skip-mpi]"
+  exit 1
+fi
+
 echo "=== k8s-compute-mcp Cluster Setup ==="
 echo ""
 
@@ -106,9 +112,8 @@ if kubectl get deployment jobset-controller-manager -n jobset-system &>/dev/null
   echo "[OK] JobSet controller already installed"
 else
   echo "Installing JobSet controller ${JOBSET_VERSION}..."
-  kubectl create -f \
-    "https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml" \
-    2>/dev/null || true  # ignore AlreadyExists
+  kubectl apply --server-side -f \
+    "https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml"
   echo "Waiting for JobSet controller..."
   kubectl rollout status deployment/jobset-controller-manager -n jobset-system --timeout=3m
   echo "[OK] JobSet controller installed"

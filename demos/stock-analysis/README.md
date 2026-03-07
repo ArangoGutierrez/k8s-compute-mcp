@@ -40,9 +40,7 @@ That's up to **5000× more simulations** in roughly the same wall-clock time. Mo
 ./demos/stock-analysis/setup-cluster.sh
 
 # 2. Install k8s-compute-mcp via Helm
-helm install k8s-compute-mcp ./deployment/helm \
-  --set pvcName=compute-data \
-  --set kueueQueue=default-queue
+helm install k8s-compute-mcp ./deployment/helm/k8s-compute-mcp
 
 # 3. Verify
 kubectl get pods -l app=k8s-compute-mcp
@@ -69,9 +67,7 @@ Pass `--skip-mpi` if you don't need MPI workloads:
 **Option A: Helm chart**
 
 ```bash
-helm install k8s-compute-mcp ./deployment/helm \
-  --set pvcName=compute-data \
-  --set kueueQueue=default-queue
+helm install k8s-compute-mcp ./deployment/helm/k8s-compute-mcp
 ```
 
 **Option B: Build from source**
@@ -88,8 +84,8 @@ make build
 kubectl get pods -l app=k8s-compute-mcp
 
 # Test the health endpoint (port-forward if needed)
-kubectl port-forward svc/k8s-compute-mcp 8081:8081 &
-curl http://localhost:8081/healthz
+kubectl port-forward svc/k8s-compute-mcp 8080:8080 &
+curl http://localhost:8080/healthz
 ```
 
 ## Connect Your LLM
